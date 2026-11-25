@@ -3,7 +3,7 @@ import { err, ok, parseJson } from "common";
 import { z } from "zod";
 import type { Approval } from "../chat/approvals";
 import type { BackgroundJob } from "../process/jobs";
-import { waitFor } from "../process/jobs";
+import { outputOf, waitFor } from "../process/jobs";
 import { runCaptured } from "../process/run";
 import { startSandboxCommand } from "./sandbox";
 
@@ -97,14 +97,14 @@ export function runRunCommand(
 export function describeFinished(job: BackgroundJob): string {
   if (job.code === 125) {
     return `The sandbox could not start. Check that podman is running and that the image is built with bun run sandbox:build.
-${job.output}`;
+${outputOf(job)}`;
   }
   if (job.code === 124) {
     return `Exit code 124 (stopped after ${String(LIFETIME_MS / 1000)} seconds)
-${job.output}`;
+${outputOf(job)}`;
   }
   return `Exit code ${String(job.code)}
-${job.output}`;
+${outputOf(job)}`;
 }
 
 /**

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { MAX_CHARS, startProcess } from "./run";
+import type { Capture } from "./run";
+import { cutNote, readCapped, startProcess } from "./run";
 
 /**
  * A program that keeps running after the caller stops waiting for it. Its output is collected
@@ -12,10 +13,8 @@ export interface BackgroundJob {
   containerName: string | undefined;
   /** The running process. */
   proc: ReturnType<typeof startProcess>;
-  /** The output so far, cut to the character limit. */
-  output: string;
-  /** Whether the output was cut, which stops the program. */
-  cut: boolean;
+  /** The output read so far. Its text is cut at the limit, which stops the program. */
+  capture: Capture;
   /** The exit code, once the program has finished. */
   code: number | undefined;
   /** Resolves once the program has finished and its output is read. */
@@ -41,27 +40,6 @@ function stopJob(job: BackgroundJob): void {
   }
 }
 
-// Reads one output stream into the job. Past the limit the job stops, and the rest is discarded.
-async function collect(job: BackgroundJob, stream: ReadableStream<Uint8Array>) {
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  for (;;) {
-    const chunk = await reader.read();
-    if (chunk.done) {
-      return;
-    }
-    if (job.cut) {
-      continue;
-    }
-    job.output += decoder.decode(chunk.value, { stream: true });
-    if (job.output.length > MAX_CHARS) {
-      job.output = `${job.output.slice(0, MAX_CHARS)}\n... cut at ${String(MAX_CHARS)} characters`;
-      job.cut = true;
-      stopJob(job);
-    }
-  }
-}
-
 /**
  * Starts a program that may outlive the caller's wait. It is stopped when its lifetime ends, if
  * it has not finished by then.
@@ -82,8 +60,7 @@ export function startBackground(
     id: randomUUID(),
     containerName,
     proc: startProcess(argv, cwd),
-    output: "",
-    cut: false,
+    capture: { text: "", cut: false },
     code: undefined,
     done: Promise.resolve(),
   };
@@ -91,9 +68,12 @@ export function startBackground(
   const limit = setTimeout(() => {
     stopJob(job);
   }, lifetimeMs);
+  const onCut = () => {
+    stopJob(job);
+  };
   job.done = Promise.all([
-    collect(job, job.proc.stdout),
-    collect(job, job.proc.stderr),
+    readCapped(job.proc.stdout, job.capture, onCut),
+    readCapped(job.proc.stderr, job.capture, onCut),
     job.proc.exited,
   ]).then(([, , code]) => {
     job.code = code;
@@ -145,4 +125,14 @@ export function stopAllJobs(): void {
     }
   }
   jobs.clear();
+}
+
+/**
+ * The output a job has read so far, with the cut note when the output was cut.
+ *
+ * @param job The job.
+ * @returns The output text.
+ */
+export function outputOf(job: BackgroundJob): string {
+  return job.capture.cut ? `${job.capture.text}${cutNote()}` : job.capture.text;
 }

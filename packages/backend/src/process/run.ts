@@ -36,8 +36,6 @@ export function startProcess(argv: string[], cwd: string) {
   });
 }
 
-// Reads one output stream up to the limit. Past the limit it stops reading and calls
-// onCut, so a program that prints without end cannot fill memory.
 /**
  * What a finished program left behind: its exit code and its output.
  */
@@ -48,30 +46,58 @@ export interface CapturedOutput {
   output: string;
 }
 
-// The text read from one stream, and whether it was cut at the limit.
-interface CappedText {
+/**
+ * Output read from one or more streams, and whether reading stopped at the limit.
+ */
+export interface Capture {
+  /** The text read so far. */
   text: string;
+  /** True once the text passed the limit, and reading stopped. */
   cut: boolean;
 }
 
-async function readCapped(
+/**
+ * The note that ends output cut at the limit.
+ *
+ * @returns The note to append to the cut output.
+ */
+export function cutNote(): string {
+  return `
+... cut at ${String(MAX_CHARS)} characters`;
+}
+
+/**
+ * Reads one output stream into a capture as it arrives. Past the limit it stops reading and calls
+ * onCut, so a program that prints without end cannot fill memory. Streams may share a capture:
+ * once it is cut, every reader stops.
+ *
+ * @param stream The stream to read.
+ * @param capture Where the text is kept.
+ * @param onCut Called once the text passes the limit.
+ */
+export async function readCapped(
   stream: ReadableStream<Uint8Array>,
-  limit: number,
+  capture: Capture,
   onCut: () => void,
-): Promise<CappedText> {
+): Promise<void> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
-  let text = "";
   for (;;) {
     const chunk = await reader.read();
     if (chunk.done) {
-      return { text, cut: false };
+      return;
     }
-    text += decoder.decode(chunk.value, { stream: true });
-    if (text.length > limit) {
+    if (capture.cut) {
+      await reader.cancel();
+      return;
+    }
+    capture.text += decoder.decode(chunk.value, { stream: true });
+    if (capture.text.length > MAX_CHARS) {
+      capture.text = capture.text.slice(0, MAX_CHARS);
+      capture.cut = true;
       await reader.cancel();
       onCut();
-      return { text: text.slice(0, limit), cut: true };
+      return;
     }
   }
 }
@@ -100,9 +126,11 @@ export async function runCaptured(
   const stopProcess = () => {
     proc.kill();
   };
+  const stdout: Capture = { text: "", cut: false };
+  const stderr: Capture = { text: "", cut: false };
   const finished = Promise.all([
-    readCapped(proc.stdout, MAX_CHARS, stopProcess),
-    readCapped(proc.stderr, MAX_CHARS, stopProcess),
+    readCapped(proc.stdout, stdout, stopProcess),
+    readCapped(proc.stderr, stderr, stopProcess),
     proc.exited,
   ]);
   const state = {
@@ -121,13 +149,14 @@ export async function runCaptured(
       `The command was stopped after ${String(timeoutMs / 1000)} seconds.`,
     );
   }
-  const [stdout, stderr, code] = result;
-  const output = `stdout:\n${stdout.text}\nstderr:\n${stderr.text}`;
+  const code = result[2];
+  const output = `stdout:
+${stdout.text}
+stderr:
+${stderr.text}`;
   const cut = stdout.cut || stderr.cut || output.length > MAX_CHARS;
   return ok({
     code,
-    output: cut
-      ? `${output.slice(0, MAX_CHARS)}\n... cut at ${String(MAX_CHARS)} characters`
-      : output,
+    output: cut ? `${output.slice(0, MAX_CHARS)}${cutNote()}` : output,
   });
 }

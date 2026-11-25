@@ -1,6 +1,6 @@
 import { parseJson } from "common";
 import { z } from "zod";
-import { findJob } from "../process/jobs";
+import { findJob, outputOf } from "../process/jobs";
 import { describeFinished } from "./shell";
 
 /**
@@ -45,7 +45,7 @@ export function runCheckCommand(argumentsJson: string): Promise<string> {
     return Promise.resolve("No background command has that id.");
   }
   if (job.code === undefined) {
-    return Promise.resolve(`Still running. Output so far:\n${job.output}`);
+    return Promise.resolve(`Still running. Output so far:\n${outputOf(job)}`);
   }
   return Promise.resolve(describeFinished(job));
 }

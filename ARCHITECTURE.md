@@ -25,6 +25,7 @@ This document describes the target architecture. It is a reference for where the
 
 - **Session**: one conversation. It starts with its first turn and ends when the user starts a new conversation. A page reload does not end it, and no hook runs then.
 - **Turn**: one chat request that allows tools. A summary request sends no tools and is not a turn.
+- **Background job**: a command that is still running after its 30-second wait. It belongs to its session: it stops at its 10-minute limit or when the session ends. Its output is read through `check_command`, which changes nothing.
 - **Hook**: a shell command the user sets in the Hooks tab for `beforeSession`, `afterSession`, `beforeTurn`, or `afterTurn`. The global command in `hooks.json` runs first, then the chosen profile's command in `profile-hooks.json`; a failing global command stops the rest. Hooks are user configuration, never model output. A failing before hook stops its step; a failing after hook is logged and never changes the reply.
 
 ## Structure
@@ -43,7 +44,7 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - Lifecycle is its own module, `hooks/`. It reads `hooks.json` and `profile-hooks.json` on each event, validates them with zod, and runs each command through Bash, on every platform. It depends on common, the process runner, the config location, and the notes module, which it uses only to confirm that a profile id names a profile note. No tool or upstream client depends on it.
 - The Hooks tab is a frontend view. It edits both files through the hooks routes in `hooks/hooks-routes.ts`, which accept a profile only if it is a profile note. Profile commands are never stored in notes, so the note tools cannot read or write them.
 - The chat route calls the hook module before the upstream call and when the reply stream ends. Session end has its own route.
-- Hook processes and shell commands share one process runner in `process/`. It applies the time limit, the output cap, and the credential filter. No second runner exists.
+- Hook processes, shell commands, and background jobs share one process runner in `process/`. It applies the time limit, the output cap, and the credential filter. It has two modes: captured, which waits for the result, and background, which returns a job id to read later. No second runner exists.
 
 ## Structure: Tools and Streaming
 
@@ -71,7 +72,8 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - A waiting approval ends after ten minutes or when the client disconnects, and its registry entry is then released. A backend restart still drops every pending approval.
 - Tool output can mislead. A cut file's header still shows the whole line range, so a truncated read can look complete; the header must name the range actually returned. An edit matches exact text only, so a CRLF file cannot be edited, and a failed match is reported as text so the model can retry.
 - Model facts are a snapshot. The budget figure is as it stood when the reply started, and each tool round adds to the conversation after it. The reply must say so rather than present the figure as live.
-- When a command's run stops early, on timeout or cut output, only the podman client is killed; the container then ends on its own timer. A stopped podman machine fails every command. Exit codes 124 and 125 can also come from the command itself, so the message can name the wrong cause.
+- Stopping a command kills the podman client and removes its container, so no container outlives its job. A backend restart runs no cleanup, so a container runs until its own limit. A stopped podman machine fails every command. Exit codes 124 and 125 can also come from the command itself, so the message can name the wrong cause.
+- A background job outlives a stopped reply, since no abort reaches it. Jobs have no cap on how many run at once, and finished jobs stay readable until the session ends.
 
 ## Security Concerns
 
@@ -97,7 +99,7 @@ Dependency direction is one way: frontend and backend depend on common, never th
 ## Security Concerns: Approvals and Commands
 
 - **Approvals**: approval ids are random UUIDs, and the answer route accepts an answer from any caller holding one. Approval is the only gate on a file write or a command. Each wait ends after ten minutes or when the client disconnects. Missing control: authentication on the route.
-- **Command execution**: the model may propose any shell command. It runs only after the user approves the command text, inside a throwaway podman container from the sandbox image. Only the project is mounted, read-write at `/workspace`; no host environment reaches the container; capabilities are dropped; and the run has a time limit. It never runs on the host and has no fallback. Missing controls: a network policy, since installs need the network; a digest-pinned image; CPU, memory, and process limits; and a block on writes to git-ignored files and the mounted `.git` directory, whose hooks run when git runs. Any secret the mount reaches can leave through the network or the output. Tool output and file text can carry instructions that steer which command the user is asked to approve.
+- **Command execution**: the model may propose any shell command. It runs only after the user approves the command text, inside a throwaway podman container from the sandbox image. Only the project is mounted, read-write at `/workspace`; no host environment reaches the container; capabilities are dropped; and the run has a time limit, and a background run also ends with its session. It never runs on the host and has no fallback. Missing controls: a network policy, since installs need the network; a digest-pinned image; CPU, memory, and process limits; and a block on writes to git-ignored files and the mounted `.git` directory, whose hooks run when git runs. Any secret the mount reaches can leave through the network or the output. Tool output and file text can carry instructions that steer which command the user is asked to approve.
 
 ## Security Concerns: Chat and Files
 
@@ -136,6 +138,7 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - An after-turn hook that runs on every end of a turn, including an aborted one, from the route rather than the stream's flush.
 - Hook failures as a structured error enum that names the event, the file, and the exit code, with the output capped.
 - A time limit per hook, since every hook now shares the 30-second limit.
+- Background jobs tied to the reply's abort signal and capped in number per session, so a stopped reply stops its command.
 - Profile commands removed with their profile note.
 
 ## Performance
