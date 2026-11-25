@@ -15,7 +15,8 @@
     "lint": "eslint .",
     "test": "bun test",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "sandbox:build": "podman build -t localhost/vise-sandbox:1 -f packages/backend/sandbox/Containerfile packages/backend/sandbox"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
