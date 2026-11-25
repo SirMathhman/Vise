@@ -2,6 +2,7 @@ import type {
   ChatStreamEvent,
   HealthResponse,
   ModelsResponse,
+  OkResponse,
   OpenRouterSettings,
 } from "common";
 import {
@@ -21,6 +22,7 @@ import { buildModelSelf } from "./chat/model-facts";
 import { CORS_HEADERS, errorJson, json, readBody } from "./http";
 import { PROJECT_ROOT } from "./project/workdir";
 import { fetchModels } from "./openrouter";
+import { runHook } from "./hooks/hooks";
 import { handleNotes } from "./notes/notes-routes";
 import { profileInstructions } from "./notes/profiles";
 import {
@@ -53,13 +55,19 @@ async function openRouterSettings(req: Request): Promise<Response> {
 // Frames each chat event as one server-sent event. Failures after the stream starts
 // arrive as an "error" event, since the HTTP status has already been sent.
 const sseEncoder = new TextEncoder();
-// A stream can be piped only once, so each reply gets its own transform.
-function toSse(): TransformStream<ChatStreamEvent, Uint8Array> {
+// A stream can be piped only once, so each reply gets its own transform. The end callback runs
+// once the reply's events have all been sent.
+function toSse(
+  onEnd: () => Promise<void>,
+): TransformStream<ChatStreamEvent, Uint8Array> {
   return new TransformStream<ChatStreamEvent, Uint8Array>({
     transform(event, controller) {
       controller.enqueue(
         sseEncoder.encode(`data: ${JSON.stringify(event)}\n\n`),
       );
+    },
+    async flush() {
+      await onEnd();
     },
   });
 }
@@ -111,6 +119,22 @@ async function chat(req: Request): Promise<Response> {
     );
   }
 
+  // A request without tools is a summary for compaction, not a turn. The first message of a
+  // conversation also starts its session.
+  const turn = input.value.allowTools !== false;
+  if (turn) {
+    if (messages.length === 1) {
+      const started = await runHook("beforeSession", PROJECT_ROOT);
+      if (!started.ok) {
+        return errorJson(started.error, 500);
+      }
+    }
+    const begun = await runHook("beforeTurn", PROJECT_ROOT);
+    if (!begun.ok) {
+      return errorJson(begun.error, 500);
+    }
+  }
+
   const upstream = withSystemContext(messages, PROJECT_ROOT, instructions);
   const tools: typeof toolDefinitions =
     input.value.allowTools === false ? [] : toolDefinitions;
@@ -131,7 +155,15 @@ async function chat(req: Request): Promise<Response> {
   if (!reply.ok) {
     return errorJson(reply.error, 502);
   }
-  return new Response(reply.value.pipeThrough(toSse()), {
+  const afterTurn = async (): Promise<void> => {
+    if (turn) {
+      const done = await runHook("afterTurn", PROJECT_ROOT);
+      if (!done.ok) {
+        console.error(done.error);
+      }
+    }
+  };
+  return new Response(reply.value.pipeThrough(toSse(afterTurn)), {
     headers: { ...CORS_HEADERS, "Content-Type": "text/event-stream" },
   });
 }
@@ -147,6 +179,17 @@ async function answerApproval(req: Request, id: string): Promise<Response> {
     return errorJson("No change is waiting for that id.", 404);
   }
   return json({ ok: true });
+}
+
+// The chat session has ended, because the user started a new conversation. Its after-session
+// command can only log a failure, so the reply is always ok.
+async function endSession(): Promise<Response> {
+  const finished = await runHook("afterSession", PROJECT_ROOT);
+  if (!finished.ok) {
+    console.error(finished.error);
+  }
+  const body: OkResponse = { ok: true };
+  return json(body);
 }
 
 async function models(): Promise<Response> {
@@ -196,6 +239,12 @@ Bun.serve({
       url.pathname.startsWith("/api/notes/")
     ) {
       return handleNotes(req, url.pathname);
+    }
+
+    if (url.pathname === "/api/session/end") {
+      return req.method === "POST"
+        ? endSession()
+        : errorJson("Method not allowed", 405);
     }
 
     if (url.pathname === "/api/models") {

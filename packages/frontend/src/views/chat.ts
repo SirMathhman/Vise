@@ -8,6 +8,7 @@ import {
   ApprovalAckSchema,
   ChatMessageListSchema,
   NotesResponseSchema,
+  OkResponseSchema,
   PROFILE_CATEGORY,
   ChatStreamEventSchema,
   budgetUsage,
@@ -425,7 +426,15 @@ async function sendMessage(): Promise<void> {
   }
 }
 
+// Tells the backend the session has ended, so its after-session command can run.
+async function endSession(): Promise<void> {
+  await apiJson("/api/session/end", OkResponseSchema, { method: "POST" });
+}
+
 function newConversation(): void {
+  if (history.length > 0) {
+    void endSession();
+  }
   history = [];
   measured = undefined;
   profileId = undefined;

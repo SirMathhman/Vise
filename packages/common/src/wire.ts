@@ -228,3 +228,12 @@ export type NotesResponse = z.infer<typeof NotesResponseSchema>;
  * The category that marks a note as a profile: its content is system instructions for the model.
  */
 export const PROFILE_CATEGORY = "profile";
+
+/**
+ * A reply that only confirms a request was received and handled.
+ */
+export const OkResponseSchema = z.object({ ok: z.literal(true) });
+/**
+ * A reply that only confirms a request was received and handled.
+ */
+export type OkResponse = z.infer<typeof OkResponseSchema>;
