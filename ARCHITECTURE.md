@@ -21,7 +21,7 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - Backend layers, from outside in: HTTP routing, then handlers, then upstream clients, then pure mapping functions. Each layer depends only on layers inside it.
 - Each upstream gets its own module (`openrouter.ts` style) that owns its URL, auth, timeouts, validation, and error mapping.
 - The tool loop, which decides when a tool runs and when the reply stops, is its own module. It depends on the upstream client and the tool registry; neither depends on it.
-- Local tools live in `packages/backend/src/tools/`, one module per tool. Each has a zod argument schema and a pure function over its input; I/O such as spawning git is passed in. The loop dispatches by registry lookup and names no tool.
+- Local tools are registered in `packages/backend/src/tools/index.ts`. Each has a zod argument schema. The loop dispatches by registry lookup and names no tool. The listing tool still spawns git itself, so passing that I/O in is open work.
 - Routing is a table of path to handler, not a growing `if` chain inside one `fetch` function.
 - Frontend modules are split per view. Each view owns its DOM and calls a shared typed API client.
 - All backend-to-frontend data passes through a typed client in common, so the wire contract is compiled, not assumed.
@@ -57,7 +57,7 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - A response cache with a bounded TTL in front of the models upstream.
 - Authentication on backend routes that proxy paid upstreams.
 - Size rules in `eslint.config.mjs` for lines per file, lines per function, complexity, and entries per directory, each limit documented here.
-- A byte cap on tool output, counted in the conversation budget, and tests for the tool loop: the round limit, fragment merging, and unknown tool names.
+- A byte cap on tool output, counted in the conversation budget, and tests for fragment merging and the listing helpers that spawn git.
 
 ## Performance
 
