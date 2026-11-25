@@ -1,8 +1,9 @@
 import { LIST_DIRECTORY_TOOL, runListDirectory } from "../list-directory";
+import { READ_FILE_TOOL, runReadFile } from "../read-file";
 
 // A tool the model may call: its definition for the request, and what running it returns.
 interface Tool {
-  definition: typeof LIST_DIRECTORY_TOOL;
+  definition: { type: "function"; function: { name: string } };
   run: (argumentsJson: string) => Promise<string>;
 }
 
@@ -11,6 +12,10 @@ const TOOLS = new Map<string, Tool>([
   [
     LIST_DIRECTORY_TOOL.function.name,
     { definition: LIST_DIRECTORY_TOOL, run: runListDirectory },
+  ],
+  [
+    READ_FILE_TOOL.function.name,
+    { definition: READ_FILE_TOOL, run: runReadFile },
   ],
 ]);
 

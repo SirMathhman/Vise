@@ -138,7 +138,7 @@ export function renderListing(
 }
 
 // The files git tracks or would track, excluding anything .gitignore matches.
-async function projectFiles(): Promise<Result<string[], string>> {
+export async function projectFiles(): Promise<Result<string[], string>> {
   try {
     const proc = Bun.spawn(
       ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
