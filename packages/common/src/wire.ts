@@ -76,6 +76,8 @@ export const ChatStreamEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("delta"), text: z.string() }),
   z.object({ type: z.literal("done") }),
   z.object({ type: z.literal("error"), message: z.string() }),
+  // The exact prompt tokens OpenRouter counted for the request that produced the reply.
+  z.object({ type: z.literal("usage"), promptTokens: z.number() }),
   // The model proposed a change that needs the user's approval. The reply waits until the
   // user answers at POST /api/approvals/:id.
   z.object({

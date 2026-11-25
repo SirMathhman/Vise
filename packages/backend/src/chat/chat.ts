@@ -17,6 +17,8 @@ const ToolCallFragmentSchema = z.object({
 // One streamed chunk from OpenRouter's chat completions endpoint.
 const ChatChunkSchema = z.object({
   error: z.object({ message: z.string().optional() }).optional(),
+  // The exact tokens of the request, reported once the reply is complete.
+  usage: z.object({ prompt_tokens: z.number().optional() }).optional(),
   choices: z
     .array(
       z.object({
@@ -158,6 +160,12 @@ async function* upstreamItems(
         };
         return;
       }
+      if (chunk.usage?.prompt_tokens !== undefined) {
+        yield {
+          kind: "event",
+          event: { type: "usage", promptTokens: chunk.usage.prompt_tokens },
+        };
+      }
       const choice = chunk.choices?.[0];
       for (const fragment of choice?.delta?.tool_calls ?? []) {
         mergeFragment(calls, fragment);
@@ -199,7 +207,7 @@ export async function* readRound(
       return item.calls;
     }
     yield item.event;
-    if (item.event.type !== "delta") {
+    if (item.event.type === "done" || item.event.type === "error") {
       return undefined;
     }
   }

@@ -42,7 +42,12 @@ interface PendingApproval {
 // The conversation so far, and the exchange currently streaming in.
 let history: ChatMessage[] = [];
 let inFlight:
-  { user: string; reply: string; approvals: PendingApproval[] } | undefined;
+  | { userMessage: ChatMessage; reply: string; approvals: PendingApproval[] }
+  | undefined;
+
+// The exact prompt tokens OpenRouter counted for the last request, and the user message that
+// request was made for. Held for this page only.
+let measured: { tokens: number; anchor: ChatMessage } | undefined;
 
 // Storage is optional: without it the conversation lasts until the page reloads.
 function readStorage(key: string): string | null {
@@ -116,7 +121,7 @@ function approvalCard(approval: PendingApproval): HTMLDivElement {
 function renderConversation(): void {
   const items: ChatMessage[] = [...history];
   if (inFlight) {
-    items.push({ role: "user", content: inFlight.user });
+    items.push(inFlight.userMessage);
     if (inFlight.reply !== "") {
       items.push({ role: "assistant", content: inFlight.reply });
     }
@@ -127,8 +132,8 @@ function renderConversation(): void {
   renderBudget(items);
 }
 
-// Shows how much of the selected model's context window the conversation uses. The count is
-// an estimate in tokens.
+// Shows how much of the selected model's context window the conversation uses. Where OpenRouter
+// has counted the last request, that exact count is used, plus an estimate for what came after.
 function renderBudget(items: ChatMessage[]): void {
   const contextLength = contextLengthOf(modelInput.value.trim());
   if (contextLength === undefined) {
@@ -138,11 +143,23 @@ function renderBudget(items: ChatMessage[]): void {
     return;
   }
   const limit = conversationLimit(contextLength);
-  // Shows the messages a send would actually include, so the meter matches the request.
-  const usage = budgetUsage(trimToBudget(items, limit), limit);
-  budgetBar.style.width = `${String(Math.min(100, usage.ratio * 100))}%`;
-  budgetBar.classList.toggle("nearly-full", usage.ratio >= 0.9);
-  budgetLabel.textContent = `About ${usage.tokens.toLocaleString()} / ${limit.toLocaleString()} tokens (estimated)`;
+  const anchorAt = measured ? items.indexOf(measured.anchor) : -1;
+  let tokens: number;
+  let exact = false;
+  if (measured !== undefined && anchorAt >= 0) {
+    exact = true;
+    tokens =
+      measured.tokens + budgetUsage(items.slice(anchorAt + 1), limit).tokens;
+  } else {
+    // Shows the messages a send would actually include, so the meter matches the request.
+    tokens = budgetUsage(trimToBudget(items, limit), limit).tokens;
+  }
+  const ratio = limit > 0 ? tokens / limit : 1;
+  budgetBar.style.width = `${String(Math.min(100, ratio * 100))}%`;
+  budgetBar.classList.toggle("nearly-full", ratio >= 0.9);
+  budgetLabel.textContent = exact
+    ? `${tokens.toLocaleString()} / ${limit.toLocaleString()} tokens (exact for the last request, estimated since)`
+    : `About ${tokens.toLocaleString()} / ${limit.toLocaleString()} tokens (estimated)`;
 }
 
 // The active model is remembered in this browser only.
@@ -173,6 +190,7 @@ async function readReply(
   body: ReadableStream<Uint8Array>,
   onDelta: (text: string) => void,
   onApproval: (approval: PendingApproval) => void,
+  onUsage: (promptTokens: number) => void,
 ): Promise<Result<string, string>> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -197,6 +215,8 @@ async function readReply(
         onDelta(event.value.text);
       } else if (event.value.type === "approval") {
         onApproval(event.value);
+      } else if (event.value.type === "usage") {
+        onUsage(event.value.promptTokens);
       } else if (event.value.type === "done") {
         await reader.cancel();
         return ok(reply);
@@ -233,14 +253,15 @@ async function sendMessage(): Promise<void> {
 
   // Older messages are dropped, oldest first, so the conversation fits the model's limit.
   const limit = conversationLimit(contextLength);
-  const full: ChatMessage[] = [...history, { role: "user", content: message }];
+  const userMessage: ChatMessage = { role: "user", content: message };
+  const full: ChatMessage[] = [...history, userMessage];
   const messages = trimToBudget(full, limit);
   if (!fitsBudget(messages, limit)) {
     chatStatus.textContent = "That message is too long to send.";
     return;
   }
   const dropped = messages.length < full.length;
-  inFlight = { user: message, reply: "", approvals: [] };
+  inFlight = { userMessage, reply: "", approvals: [] };
   chatMessage.value = "";
   chatSend.disabled = true;
   chatStatus.textContent = "Waiting for reply…";
@@ -261,6 +282,10 @@ async function sendMessage(): Promise<void> {
               inFlight.approvals.push(approval);
             }
             chatStatus.textContent = "Waiting for your approval…";
+            renderConversation();
+          },
+          (promptTokens) => {
+            measured = { tokens: promptTokens, anchor: userMessage };
             renderConversation();
           },
         )
@@ -285,6 +310,7 @@ async function sendMessage(): Promise<void> {
 
 function newConversation(): void {
   history = [];
+  measured = undefined;
   saveHistory();
   chatStatus.textContent = "";
   renderConversation();
@@ -295,6 +321,8 @@ export function initChat(): void {
   modelInput.value = readActiveModel();
   modelInput.addEventListener("change", () => {
     writeStorage(ACTIVE_MODEL_KEY, modelInput.value.trim());
+    // A count from another model's tokenizer does not apply to this one.
+    measured = undefined;
     renderConversation();
   });
   chatSend.addEventListener("click", () => void sendMessage());
