@@ -2,7 +2,7 @@ import type { Result } from "common";
 import { err, ok, parseJson } from "common";
 import { z } from "zod";
 import type { Approval } from "../chat/approvals";
-import { runCaptured } from "./run";
+import { runCaptured } from "../process/run";
 import { executeInSandbox } from "./sandbox";
 
 /**

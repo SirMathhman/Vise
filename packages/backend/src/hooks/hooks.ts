@@ -3,6 +3,7 @@ import type { Result } from "common";
 import { err, ok, parseJson } from "common";
 import { z } from "zod";
 import { configDir } from "../config-dir";
+import { runCaptured } from "../process/run";
 
 // The commands the user sets in hooks.json in the config folder, outside the project. Each is
 // optional. A missing file sets none.
@@ -18,8 +19,10 @@ const HooksFileSchema = z.object({
  */
 export type HookName = keyof z.infer<typeof HooksFileSchema>;
 
-// Longest output kept in a failure message, counted from the end where the error usually is.
-const MAX_OUTPUT_CHARS = 2000;
+/**
+ * How long a hook may run. The same limit a shell command gets.
+ */
+export const HOOK_TIMEOUT_MS = 30_000;
 
 function hooksFile(): string {
   return path.join(configDir(), "hooks.json");
@@ -39,16 +42,18 @@ async function readHooks(): Promise<
 }
 
 /**
- * Runs the command set for one event on the host, in the project root. An event with no
- * command succeeds without running anything.
+ * Runs the command set for one event on the host, in the project root, through the shared
+ * process runner. An event with no command succeeds without running anything.
  *
  * @param name The event to run.
  * @param root The project root, where the command runs.
- * @returns ok when no command is set or it exits with 0; otherwise the failure with the end of its output.
+ * @param timeoutMs How long the command may run before it is stopped.
+ * @returns ok when no command is set or it exits with 0; otherwise the failure, naming the hook.
  */
 export async function runHook(
   name: HookName,
   root: string,
+  timeoutMs = HOOK_TIMEOUT_MS,
 ): Promise<Result<undefined, string>> {
   const config = await readHooks();
   if (!config.ok) {
@@ -58,19 +63,16 @@ export async function runHook(
   if (command === undefined) {
     return ok(undefined);
   }
-  const shell =
-    process.platform === "win32"
-      ? ["cmd.exe", "/d", "/s", "/c", command]
-      : ["sh", "-c", command];
-  const proc = Bun.spawn(shell, { cwd: root, stdout: "pipe", stderr: "pipe" });
-  const [stdout, stderr, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  if (code === 0) {
+  // Bash runs every hook, on every platform, as the shell tool's host commands do. On Windows
+  // that is Git Bash. cmd.exe would mangle the quotes in a command.
+  const finished = await runCaptured(["bash", "-c", command], root, timeoutMs);
+  if (!finished.ok) {
+    return err(`The ${name} hook failed: ${finished.error}`);
+  }
+  if (finished.value.code === 0) {
     return ok(undefined);
   }
-  const output = `${stdout}${stderr}`.trim().slice(-MAX_OUTPUT_CHARS);
-  return err(`The ${name} hook exited with code ${String(code)}.\n${output}`);
+  return err(
+    `The ${name} hook exited with code ${String(finished.value.code)}.\n${finished.value.output}`,
+  );
 }

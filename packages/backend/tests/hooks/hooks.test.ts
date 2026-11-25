@@ -49,3 +49,44 @@ describe("hooks", () => {
     }
   });
 });
+
+describe("hook limits and environment", () => {
+  let dir = "";
+
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(tmpdir(), "vise-hooks-"));
+    process.env.VISE_CONFIG_DIR = dir;
+  });
+
+  afterEach(() => {
+    delete process.env.VISE_CONFIG_DIR;
+    delete process.env.VISE_TEST_API_KEY;
+  });
+
+  test("a hook that runs past its time limit is stopped, and the error names the hook", async () => {
+    writeFileSync(
+      path.join(dir, "hooks.json"),
+      JSON.stringify({ beforeTurn: 'bun -e "setTimeout(() => {}, 5000)"' }),
+    );
+    const stopped = await runHook("beforeTurn", dir, 300);
+    expect(stopped.ok).toBe(false);
+    if (!stopped.ok) {
+      expect(stopped.error).toStartWith("The beforeTurn hook failed:");
+    }
+  });
+
+  test("a hook does not receive variables whose names look like credentials", async () => {
+    process.env.VISE_TEST_API_KEY = "secret-value";
+    writeFileSync(
+      path.join(dir, "hooks.json"),
+      JSON.stringify({
+        beforeTurn:
+          'bun -e "process.exit(process.env.VISE_TEST_API_KEY ? 1 : 0)"',
+      }),
+    );
+    expect(await runHook("beforeTurn", dir)).toEqual({
+      ok: true,
+      value: undefined,
+    });
+  });
+});

@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import type { Result } from "common";
 import { err, ok } from "common";
-import { runCaptured } from "./run";
+import { runCaptured } from "../process/run";
 
 /**
  * The image commands run in. Build it with `bun run sandbox:build`.

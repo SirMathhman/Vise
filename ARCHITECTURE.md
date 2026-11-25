@@ -21,6 +21,12 @@ This document describes the target architecture. It is a reference for where the
 - **Compaction**: when a send would pass 80% of the model's window, the browser asks for a summary of the older conversation and keeps it with the most recent ten messages. The summary applies no change and is not kept as history.
 - **Invariant**: API keys never leave the backend. Every deserialization, including upstream responses, streamed chunks, request bodies, and saved history, goes through a zod schema via `parseJson`. ESLint bans `JSON.parse` and bare `.json()` calls elsewhere.
 
+## Definitions: Lifecycle
+
+- **Session**: one conversation. It starts with its first turn and ends when the user starts a new conversation. A page reload does not end it, and no hook runs then.
+- **Turn**: one chat request that allows tools. A summary request sends no tools and is not a turn.
+- **Hook**: a shell command the user sets in `hooks.json` for `beforeSession`, `afterSession`, `beforeTurn`, or `afterTurn`. Hooks are user configuration, never model output. A failing before hook stops its step. A failing after hook is logged and never changes the reply.
+
 ## Structure
 
 Dependency direction is one way: frontend and backend depend on common, never the reverse. Backend and frontend do not import each other.
@@ -32,9 +38,15 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - The approval registry in `approvals.ts` holds the replies waiting on a user answer. Only the tool loop opens an approval and only the approval route answers one. It is scoped to a single reply and lives no longer than that reply.
 - Notes are a backend module, `notes/`, with the same layering: a store owns `notes.json` and returns results, and only the note routes and tools map those results to HTTP statuses or tool text. Route handlers live in the notes module, not in `index.ts`.
 
+## Structure: Lifecycle
+
+- Lifecycle is its own module, `hooks/`. It reads `hooks.json` on each event, validates it with zod, and runs each command through Bash, on every platform. It depends on common, the process runner, and the config location; no tool or upstream client depends on it.
+- The chat route calls the hook module before the upstream call and when the reply stream ends. Session end has its own route.
+- Hook processes and shell commands share one process runner in `process/`. It applies the time limit, the output cap, and the credential filter. No second runner exists.
+
 ## Structure: Tools and Streaming
 
-- Local tools are registered in `packages/backend/src/tools/index.ts`. Each has a zod argument schema, empty when it takes no arguments. A tool that runs processes lives in its own folder, `packages/backend/src/shell/`, and is registered beside the file tools; it depends only on common and the approval type. The sandbox module is the only path that starts a model-proposed command, and no host runner exists. The loop dispatches by registry lookup and names no tool. The loop hands each tool the project root and the model's facts from the reply context, never the raw route input. All project file access, including the git-visible file list, path resolution, and the text checks, lives in `project-files.ts`, which the read, edit, and create tools share. No tool repeats the git, root, or link checks inline.
+- Local tools are registered in `packages/backend/src/tools/index.ts`. Each has a zod argument schema, empty when it takes no arguments. A tool that runs processes lives in its own folder, `packages/backend/src/shell/`, and is registered beside the file tools; it depends only on common and the approval type. The sandbox module is the only path that starts a model-proposed command, and no tool runs a host process. The loop dispatches by registry lookup and names no tool. The loop hands each tool the project root and the model's facts from the reply context, never the raw route input. All project file access, including the git-visible file list, path resolution, and the text checks, lives in `project-files.ts`, which the read, edit, and create tools share. No tool repeats the git, root, or link checks inline.
 - Routing is a table of path to handler, not a growing `if` chain inside one `fetch` function.
 - Frontend modules are split per view. Each view owns its DOM and calls a shared typed API client.
 - All backend-to-frontend data passes through a typed client in common, so the wire contract is compiled, not assumed.
@@ -65,6 +77,19 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - **Trust boundary**: the backend trusts nothing from upstream or from the browser. Both are validated. It accepts browser requests only from the frontend dev origin, `http://localhost:5173`, never a wildcard.
 - **Key exposure**: the UI-saved upstream API key is stored in a per-user config file outside the project (`%APPDATA%\vise\openrouter.env`), or read from the environment, and is never returned in responses or logs. The UI sends it once, on save. No sandbox mount reaches that folder. The sandbox also masks the old `packages/backend/.env` path as defense in depth; a command that reads another secret file inside the project can still send it upstream as tool output.
 - **Open proxy**: any client that can reach the backend can spend the operator's upstream quota. Missing control: authentication on proxy routes.
+
+## Potential Problems: Lifecycle
+
+- Session identity is inferred from the message count, so a first turn that fails before the upstream call repeats the before-session hook on retry.
+- The after-turn hook runs from the stream's flush, which does not run when the client disconnects. An aborted turn gets no after-turn hook.
+- A reload or closed tab loses the session without its after-session hook. Nothing records that the session ended.
+- Hook errors are plain strings that include command output, and the browser receives them.
+
+## Security Concerns: Hooks
+
+- **Trust boundary**: hooks run on the host with the backend's privileges, outside the sandbox. The config folder is outside every tool's reach, so the model cannot write `hooks.json`. Hooks are trusted user configuration.
+- **Unauthenticated trigger**: `POST /api/session/end` runs the after-session hook for any caller. A page open in the user's browser can send a simple cross-origin POST with no body; the browser hides the reply, but the command has already run. Missing control: require a JSON content type, which forces a preflight the server refuses, and check the origin.
+- **Output**: hook error text, up to the runner's 20,000-character cap, reaches the browser and the log. Missing control: a smaller cap for error text.
 
 ## Security Concerns: Approvals and Commands
 
@@ -102,8 +127,16 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - Compaction as a pure, tested module in the frontend, outside the view. Its summary request runs without tools, and the summary is checked before it replaces history.
 - A byte cap on tool output, counted in the conversation budget. Exact-match edits that accept CRLF files and keep their line endings. Tests for fragment merging, the file-listing helpers, and every refusal path of the reading tool: ignored, symbolic link, binary, oversized, and outside the root.
 
+## Future Work: Lifecycle
+
+- Backend-issued session ids, sent with each turn and end request, so start, end, and retry are exact.
+- An after-turn hook that runs on every end of a turn, including an aborted one, from the route rather than the stream's flush.
+- Hook failures as a structured error enum that names the event, the file, and the exit code, with the output capped.
+- A time limit per hook, since every hook now shares the 30-second limit.
+
 ## Performance
 
+- Each chat request waits for the before-turn hook, so a slow hook adds latency to every send. Measure hook time apart from upstream time.
 - Upstream calls without caching are the main latency risk, and streams have no timeout after the reply's headers arrive.
 - The app is exactly the window size. The chat conversation is the only scroll region; every other section must fit the window or page its rows. Content clipped below the window is a defect, not a layout.
 - Re-sending the conversation on every turn makes cost grow with its length, so the shared budget caps each request.
