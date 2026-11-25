@@ -8,6 +8,8 @@ import {
   ApprovalAckSchema,
   ChatMessageListSchema,
   ChatStreamEventSchema,
+  MAX_CONVERSATION_CHARS,
+  MAX_CONVERSATION_MESSAGES,
   describeParseError,
   err,
   fitsBudget,
@@ -27,6 +29,8 @@ const chatMessage = requireElement("chat-message") as HTMLTextAreaElement;
 const chatSend = requireElement("chat-send") as HTMLButtonElement;
 const chatNew = requireElement("chat-new") as HTMLButtonElement;
 const chatStatus = requireElement("chat-status") as HTMLParagraphElement;
+const budgetBar = requireElement("budget-bar") as HTMLDivElement;
+const budgetLabel = requireElement("budget-label") as HTMLParagraphElement;
 
 // A proposed change that waits for the user's answer.
 interface PendingApproval {
@@ -120,6 +124,21 @@ function renderConversation(): void {
   const cards = inFlight ? inFlight.approvals.map(approvalCard) : [];
   conversation.replaceChildren(...items.map(bubble), ...cards);
   conversation.scrollTop = conversation.scrollHeight;
+  renderBudget(items);
+}
+
+// Shows how much of the conversation budget the conversation uses. The budget counts
+// characters and messages, not model tokens.
+function renderBudget(items: ChatMessage[]): void {
+  const chars = items.reduce((sum, m) => sum + m.content.length, 0);
+  const messages = items.length;
+  const ratio = Math.max(
+    chars / MAX_CONVERSATION_CHARS,
+    messages / MAX_CONVERSATION_MESSAGES,
+  );
+  budgetBar.style.width = `${String(Math.min(100, ratio * 100))}%`;
+  budgetBar.classList.toggle("nearly-full", ratio >= 0.9);
+  budgetLabel.textContent = `${chars.toLocaleString()} / ${MAX_CONVERSATION_CHARS.toLocaleString()} characters · ${String(messages)} / ${String(MAX_CONVERSATION_MESSAGES)} messages`;
 }
 
 // The active model is remembered in this browser only.

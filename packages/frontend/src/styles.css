@@ -178,6 +178,29 @@ section.chat {
   border: 1px solid var(--border);
 }
 
+.meter {
+  height: 0.4rem;
+  background: var(--border);
+  border-radius: 0.2rem;
+  overflow: hidden;
+}
+
+#budget-bar {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+}
+
+#budget-bar.nearly-full {
+  background: #dc2626;
+}
+
+#budget-label {
+  margin: 0.25rem 0 0.5rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
 .approval {
   align-self: stretch;
   border: 1px dashed var(--accent);
