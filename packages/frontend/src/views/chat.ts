@@ -49,6 +49,12 @@ let inFlight:
 // request was made for. Held for this page only.
 let measured: { tokens: number; anchor: ChatMessage } | undefined;
 
+// When a conversation reaches this share of the model's limit, it is summarized before the next
+// send. The summary replaces the older messages; the most recent ones are kept as they are.
+const COMPACT_AT = 0.8;
+const KEEP_RECENT = 10;
+const SUMMARY_REQUEST = "Summarize the convo";
+
 // Storage is optional: without it the conversation lasts until the page reloads.
 function readStorage(key: string): string | null {
   try {
@@ -132,8 +138,24 @@ function renderConversation(): void {
   renderBudget(items);
 }
 
-// Shows how much of the selected model's context window the conversation uses. Where OpenRouter
-// has counted the last request, that exact count is used, plus an estimate for what came after.
+// The tokens a conversation uses. Where OpenRouter has counted the last request, that exact
+// count is used, plus an estimate for what came after it.
+function usedTokens(
+  items: ChatMessage[],
+  limit: number,
+): { tokens: number; exact: boolean } {
+  const anchorAt = measured ? items.indexOf(measured.anchor) : -1;
+  if (measured !== undefined && anchorAt >= 0) {
+    return {
+      tokens:
+        measured.tokens + budgetUsage(items.slice(anchorAt + 1), limit).tokens,
+      exact: true,
+    };
+  }
+  return { tokens: budgetUsage(items, limit).tokens, exact: false };
+}
+
+// Shows how much of the selected model's context window the conversation uses.
 function renderBudget(items: ChatMessage[]): void {
   const contextLength = contextLengthOf(modelInput.value.trim());
   if (contextLength === undefined) {
@@ -143,17 +165,13 @@ function renderBudget(items: ChatMessage[]): void {
     return;
   }
   const limit = conversationLimit(contextLength);
-  const anchorAt = measured ? items.indexOf(measured.anchor) : -1;
-  let tokens: number;
-  let exact = false;
-  if (measured !== undefined && anchorAt >= 0) {
-    exact = true;
-    tokens =
-      measured.tokens + budgetUsage(items.slice(anchorAt + 1), limit).tokens;
-  } else {
-    // Shows the messages a send would actually include, so the meter matches the request.
-    tokens = budgetUsage(trimToBudget(items, limit), limit).tokens;
-  }
+  // Shows the messages a send would actually include, so the meter matches the request.
+  const whole = usedTokens(items, limit);
+  const shown = whole.exact
+    ? whole
+    : usedTokens(trimToBudget(items, limit), limit);
+  const tokens = shown.tokens;
+  const exact = shown.exact;
   const ratio = limit > 0 ? tokens / limit : 1;
   budgetBar.style.width = `${String(Math.min(100, ratio * 100))}%`;
   budgetBar.classList.toggle("nearly-full", ratio >= 0.9);
@@ -236,6 +254,30 @@ function parseEventLine(payload: string): Result<ChatStreamEvent, string> {
   return parsed.ok ? ok(parsed.value) : err(describeParseError(parsed.error));
 }
 
+// Asks the model to summarize the conversation so far. Any change the summary turn proposes
+// is declined, so the summary only reads.
+async function summarizeConversation(
+  model: string,
+  limit: number,
+): Promise<Result<string, string>> {
+  const request = trimToBudget(
+    [...history, { role: "user", content: SUMMARY_REQUEST }],
+    limit,
+  );
+  const opened = await openChat({ model, messages: request });
+  if (!opened.ok) {
+    return err(opened.error);
+  }
+  return readReply(
+    opened.value,
+    () => undefined,
+    (approval) => {
+      void answer(approval.id, false);
+    },
+    () => undefined,
+  );
+}
+
 // Sends the conversation with one new message and records the reply when it completes.
 async function sendMessage(): Promise<void> {
   const model = modelInput.value.trim();
@@ -251,9 +293,42 @@ async function sendMessage(): Promise<void> {
     return;
   }
 
-  // Older messages are dropped, oldest first, so the conversation fits the model's limit.
   const limit = conversationLimit(contextLength);
   const userMessage: ChatMessage = { role: "user", content: message };
+
+  // Near the limit, the older conversation is summarized first. The summary replaces it, and
+  // the most recent messages are kept.
+  let compacted = false;
+  if (
+    usedTokens([...history, userMessage], limit).tokens >=
+    COMPACT_AT * limit
+  ) {
+    chatSend.disabled = true;
+    chatStatus.textContent = "Summarizing the conversation…";
+    let summary: Result<string, string>;
+    try {
+      summary = await summarizeConversation(model, limit);
+    } catch (failure) {
+      summary = err(errorMessage(failure));
+    }
+    chatSend.disabled = false;
+    if (!summary.ok) {
+      chatStatus.textContent = `Could not summarize: ${summary.error}`;
+      return;
+    }
+    history = [
+      {
+        role: "user",
+        content: `Summary of the earlier conversation: ${summary.value}`,
+      },
+      ...history.slice(-KEEP_RECENT),
+    ];
+    measured = undefined;
+    saveHistory();
+    compacted = true;
+  }
+
+  // Older messages are dropped, oldest first, so the conversation fits the model's limit.
   const full: ChatMessage[] = [...history, userMessage];
   const messages = trimToBudget(full, limit);
   if (!fitsBudget(messages, limit)) {
@@ -293,9 +368,11 @@ async function sendMessage(): Promise<void> {
     if (outcome.ok) {
       history = [...messages, { role: "assistant", content: outcome.value }];
       saveHistory();
-      chatStatus.textContent = dropped
-        ? "Done. Older messages were dropped to fit the conversation limit."
-        : "Done";
+      chatStatus.textContent = compacted
+        ? "Done. The conversation was summarized to keep room."
+        : dropped
+          ? "Done. Older messages were dropped to fit the conversation limit."
+          : "Done";
     } else {
       chatStatus.textContent = `Unavailable: ${outcome.error}`;
     }
