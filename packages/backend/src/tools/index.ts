@@ -8,6 +8,11 @@ import type { ReplyContext } from "../chat/reply-context";
 import { READ_FILE_TOOL, runReadFile } from "./read-file";
 import { RUN_COMMAND_TOOL, runRunCommand } from "../shell/shell";
 import {
+  CHECK_COMMAND_NAME,
+  CHECK_COMMAND_TOOL,
+  runCheckCommand,
+} from "../shell/check-command";
+import {
   DELETE_NOTE_NAME,
   DELETE_NOTE_TOOL,
   LIST_NOTES_NAME,
@@ -66,6 +71,10 @@ const TOOLS = new Map<string, Tool>([
   [
     RUN_COMMAND_TOOL.function.name,
     { definition: RUN_COMMAND_TOOL, run: runRunCommand },
+  ],
+  [
+    CHECK_COMMAND_NAME,
+    { definition: CHECK_COMMAND_TOOL, run: runCheckCommand },
   ],
   [
     MODEL_INFO_TOOL.function.name,

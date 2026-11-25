@@ -24,6 +24,7 @@ import { CORS_HEADERS, errorJson, json, readBody, refuseWrite } from "./http";
 import { PROJECT_ROOT } from "./project/workdir";
 import { fetchModels } from "./openrouter";
 import { HOOK_TIMEOUT_MS, runHook } from "./hooks/hooks";
+import { stopAllJobs } from "./process/jobs";
 import { handleHooks } from "./hooks/hooks-routes";
 import { handleNotes } from "./notes/notes-routes";
 import { profileInstructions } from "./notes/profiles";
@@ -205,6 +206,8 @@ async function endSession(req: Request): Promise<Response> {
   if (!input.ok) {
     return errorJson(describeParseError(input.error), 400);
   }
+  // Background commands belong to the conversation, so they stop with it.
+  stopAllJobs();
   const finished = await runHook(
     "afterSession",
     PROJECT_ROOT,

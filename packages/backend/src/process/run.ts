@@ -20,7 +20,14 @@ function commandEnvironment(): Record<string, string> {
   return env;
 }
 
-function startProcess(argv: string[], cwd: string) {
+/**
+ * Starts a program with the credential filter applied to its environment.
+ *
+ * @param argv The program and its arguments.
+ * @param cwd The folder the program runs in.
+ * @returns The running process.
+ */
+export function startProcess(argv: string[], cwd: string) {
   return Bun.spawn(argv, {
     cwd,
     env: commandEnvironment(),

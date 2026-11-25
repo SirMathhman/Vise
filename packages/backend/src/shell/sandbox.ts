@@ -1,9 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import type { Result } from "common";
-import { err, ok } from "common";
-import { runCaptured } from "../process/run";
+import type { BackgroundJob } from "../process/jobs";
+import { startBackground } from "../process/jobs";
 
 /**
  * The image commands run in. Build it with `bun run sandbox:build`.
@@ -61,47 +60,25 @@ export function sandboxArguments(
 }
 
 /**
- * Runs one shell command in the sandbox and returns its exit code and output. It never falls
- * back to running on this machine.
+ * Starts one shell command in the sandbox as a background job. It never falls back to running on
+ * this machine. The container's own limit ends the command, and the job's limit backs it up.
  *
  * @param root The project folder to mount.
  * @param command The bash command to run.
- * @param timeoutMs How long the command may run.
- * @returns The exit code and output, or an error when the sandbox could not run the command.
+ * @param lifetimeMs How long the command may run in total.
+ * @returns The running job, whose output is read as it arrives.
  */
-export async function executeInSandbox(
+export function startSandboxCommand(
   root: string,
   command: string,
-  timeoutMs: number,
-): Promise<Result<string, string>> {
+  lifetimeMs: number,
+): BackgroundJob {
   const name = `vise-command-${randomUUID()}`;
-  const seconds = Math.ceil(timeoutMs / 1000);
-  const result = await runCaptured(
+  const seconds = Math.ceil(lifetimeMs / 1000);
+  return startBackground(
     sandboxArguments(root, name, command, seconds),
     root,
-    timeoutMs + PODMAN_GRACE_MS,
+    lifetimeMs + PODMAN_GRACE_MS,
+    name,
   );
-  if (!result.ok) {
-    // Podman itself did not finish in time, so make sure the container is gone.
-    try {
-      Bun.spawn(["podman", "rm", "-f", name], {
-        stdout: "ignore",
-        stderr: "ignore",
-      });
-    } catch {
-      // Podman is not reachable; there is no container to remove.
-    }
-    return result;
-  }
-  const { code, output } = result.value;
-  if (code === 125) {
-    return err(
-      `The sandbox could not start. Check that podman is running and that the image is built with bun run sandbox:build.\n${output}`,
-    );
-  }
-  const status =
-    code === 124
-      ? `Exit code 124 (stopped after ${String(seconds)} seconds)`
-      : `Exit code ${String(code)}`;
-  return ok(`${status}\n${output}`);
 }
