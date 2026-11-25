@@ -10,7 +10,7 @@ import { RUN_COMMAND_TOOL, runRunCommand } from "../shell/shell";
 // approves it. Every tool receives the project root from the caller.
 interface Tool {
   definition: { type: "function"; function: { name: string } };
-  run: (root: string, argumentsJson: string) => Promise<string | Approval>;
+  run(root: string, argumentsJson: string): Promise<string | Approval>;
 }
 
 // Every tool the backend offers, keyed by name.

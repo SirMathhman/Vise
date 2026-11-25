@@ -22,6 +22,12 @@ export default tseslint.config(
     ...tseslint.configs.disableTypeChecked,
   },
   {
+    // Interface members are written as methods, `close(): void`, not as function-valued properties.
+    rules: {
+      "@typescript-eslint/method-signature-style": ["error", "method"],
+    },
+  },
+  {
     // Every exported declaration carries a JSDoc comment.
     plugins: { jsdoc },
     rules: {

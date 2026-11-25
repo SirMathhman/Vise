@@ -9,7 +9,7 @@ export interface Approval {
   /** The text shown on the card, such as a diff. */
   body: string;
   /** Carries out the change once the user approves it. Returns the text the model reads back. */
-  apply: () => Promise<string>;
+  apply(): Promise<string>;
 }
 
 /**
@@ -29,7 +29,7 @@ export interface OpenApproval {
   /** Resolves with the user's answer: true to approve, false to reject. */
   decided: Promise<boolean>;
   /** Releases the approval, so it can no longer be answered. */
-  close: () => void;
+  close(): void;
 }
 
 /**
