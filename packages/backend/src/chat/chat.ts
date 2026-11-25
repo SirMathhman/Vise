@@ -46,26 +46,59 @@ export interface ToolCall {
   arguments: string;
 }
 
+// A text event the upstream stream yields, as it arrives.
+interface UpstreamEventItem {
+  kind: "event";
+  event: ChatStreamEvent;
+}
+
+// The tool calls that end a round of the upstream stream.
+interface UpstreamToolCallsItem {
+  kind: "toolCalls";
+  calls: ToolCall[];
+}
+
 // What the upstream stream yields: a text event, or the tool calls that end a round.
-type UpstreamItem =
-  | { kind: "event"; event: ChatStreamEvent }
-  | { kind: "toolCalls"; calls: ToolCall[] };
+type UpstreamItem = UpstreamEventItem | UpstreamToolCallsItem;
+
+// A system or user message as sent upstream.
+interface PlainUpstreamMessage {
+  role: "system" | "user";
+  content: string;
+}
+
+// The function half of a tool call the assistant made.
+interface UpstreamFunctionCall {
+  name: string;
+  arguments: string;
+}
+
+// One tool call the assistant made, as sent upstream.
+interface UpstreamToolCall {
+  id: string;
+  type: "function";
+  function: UpstreamFunctionCall;
+}
+
+// An assistant message as sent upstream, with any tool calls it made.
+interface AssistantUpstreamMessage {
+  role: "assistant";
+  content: string | null;
+  tool_calls?: UpstreamToolCall[];
+}
+
+// The result of a tool call, sent back upstream.
+interface ToolUpstreamMessage {
+  role: "tool";
+  tool_call_id: string;
+  content: string;
+}
 
 /**
  * A message as sent upstream. Only the backend builds system and tool messages.
  */
 export type UpstreamMessage =
-  | { role: "system" | "user"; content: string }
-  | {
-      role: "assistant";
-      content: string | null;
-      tool_calls?: {
-        id: string;
-        type: "function";
-        function: { name: string; arguments: string };
-      }[];
-    }
-  | { role: "tool"; tool_call_id: string; content: string };
+  PlainUpstreamMessage | AssistantUpstreamMessage | ToolUpstreamMessage;
 
 /**
  * Puts the backend's own instructions in front of the conversation. The client never

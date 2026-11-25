@@ -120,6 +120,16 @@ export async function isGitInternal(
 }
 
 /**
+ * A project file read as text.
+ */
+export interface ProjectText {
+  /** The file's absolute path. */
+  absolute: string;
+  /** The file's text. */
+  text: string;
+}
+
+/**
  * Opens a project text file for a tool. Refuses anything outside the root, anything git
  * ignores, symbolic links, binary files, and files over the size limit.
  *
@@ -130,7 +140,7 @@ export async function isGitInternal(
 export async function readProjectText(
   root: string,
   requested: string,
-): Promise<Result<{ absolute: string; text: string }, string>> {
+): Promise<Result<ProjectText, string>> {
   const relative = resolveInside(root, requested);
   if (!relative.ok) {
     return err(relative.error);

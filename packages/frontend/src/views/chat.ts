@@ -40,15 +40,34 @@ interface PendingApproval {
   body: string;
 }
 
+// The exchange currently streaming in: the user's message, the reply so far, and the changes
+// waiting for an answer.
+interface InFlight {
+  userMessage: ChatMessage;
+  reply: string;
+  approvals: PendingApproval[];
+}
+
+// The exact prompt tokens OpenRouter counted for the last request, and the user message that
+// request was made for.
+interface Measured {
+  tokens: number;
+  anchor: ChatMessage;
+}
+
+// The tokens a conversation uses, and whether that count is exact.
+interface TokenUsage {
+  tokens: number;
+  exact: boolean;
+}
+
 // The conversation so far, and the exchange currently streaming in.
 let history: ChatMessage[] = [];
-let inFlight:
-  | { userMessage: ChatMessage; reply: string; approvals: PendingApproval[] }
-  | undefined;
+let inFlight: InFlight | undefined;
 
 // The exact prompt tokens OpenRouter counted for the last request, and the user message that
 // request was made for. Held for this page only.
-let measured: { tokens: number; anchor: ChatMessage } | undefined;
+let measured: Measured | undefined;
 
 // When a conversation reaches this share of the model's limit, it is summarized before the next
 // send. The summary replaces the older messages; the most recent ones are kept as they are.
@@ -141,10 +160,7 @@ function renderConversation(): void {
 
 // The tokens a conversation uses. Where OpenRouter has counted the last request, that exact
 // count is used, plus an estimate for what came after it.
-function usedTokens(
-  items: ChatMessage[],
-  limit: number,
-): { tokens: number; exact: boolean } {
+function usedTokens(items: ChatMessage[], limit: number): TokenUsage {
   const anchorAt = measured ? items.indexOf(measured.anchor) : -1;
   if (measured !== undefined && anchorAt >= 0) {
     return {

@@ -8,8 +8,19 @@ import { RUN_COMMAND_TOOL, runRunCommand } from "../shell/shell";
 // A tool the model may call: its definition for the request, and what running it returns.
 // A tool that changes files returns an Approval instead, and nothing changes until the user
 // approves it. Every tool receives the project root from the caller.
+// The name a tool is offered under.
+interface ToolFunction {
+  name: string;
+}
+
+// A tool as offered to the model in each request.
+interface ToolDefinition {
+  type: "function";
+  function: ToolFunction;
+}
+
 interface Tool {
-  definition: { type: "function"; function: { name: string } };
+  definition: ToolDefinition;
   run(root: string, argumentsJson: string): Promise<string | Approval>;
 }
 

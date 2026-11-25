@@ -31,11 +31,27 @@ function startProcess(argv: string[], cwd: string) {
 
 // Reads one output stream up to the limit. Past the limit it stops reading and calls
 // onCut, so a program that prints without end cannot fill memory.
+/**
+ * What a finished program left behind: its exit code and its output.
+ */
+export interface CapturedOutput {
+  /** The exit code the program returned. */
+  code: number;
+  /** The output, cut to the character limit. */
+  output: string;
+}
+
+// The text read from one stream, and whether it was cut at the limit.
+interface CappedText {
+  text: string;
+  cut: boolean;
+}
+
 async function readCapped(
   stream: ReadableStream<Uint8Array>,
   limit: number,
   onCut: () => void,
-): Promise<{ text: string; cut: boolean }> {
+): Promise<CappedText> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let text = "";
@@ -67,7 +83,7 @@ export async function runCaptured(
   argv: string[],
   cwd: string,
   timeoutMs: number,
-): Promise<Result<{ code: number; output: string }, string>> {
+): Promise<Result<CapturedOutput, string>> {
   let proc: ReturnType<typeof startProcess>;
   try {
     proc = startProcess(argv, cwd);

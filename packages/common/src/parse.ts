@@ -3,10 +3,29 @@ import type { Result } from "./result";
 import { err, ok } from "./result";
 
 /**
+ * The text was not JSON at all.
+ */
+export interface NotJsonError {
+  /** The kind of failure. */
+  kind: "notJson";
+}
+
+/**
+ * The value parsed but does not match the schema. The path names the field that failed.
+ */
+export interface WrongShapeError {
+  /** The kind of failure. */
+  kind: "wrongShape";
+  /** The dotted path to the field that failed, or empty for the whole value. */
+  path: string;
+  /** What is wrong with that field. */
+  message: string;
+}
+
+/**
  * Why a value could not be read. Callers match on kind, and describeParseError turns it into text.
  */
-export type ParseError =
-  { kind: "notJson" } | { kind: "wrongShape"; path: string; message: string };
+export type ParseError = NotJsonError | WrongShapeError;
 
 /**
  * Checks an untrusted value against a zod schema.

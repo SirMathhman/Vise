@@ -31,6 +31,16 @@ export function estimateTokens(text: string): number {
 }
 
 /**
+ * How much of a limit a conversation uses.
+ */
+export interface BudgetUsage {
+  /** The estimated tokens used. */
+  tokens: number;
+  /** The tokens used as a fraction of the limit. */
+  ratio: number;
+}
+
+/**
  * The estimated tokens a conversation uses, and that as a fraction of the limit.
  *
  * @param messages The conversation.
@@ -40,7 +50,7 @@ export function estimateTokens(text: string): number {
 export function budgetUsage(
   messages: ChatMessage[],
   limit: number,
-): { tokens: number; ratio: number } {
+): BudgetUsage {
   const tokens = messages.reduce(
     (sum, m) => sum + estimateTokens(m.content),
     0,

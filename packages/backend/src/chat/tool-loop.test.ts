@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { ChatStreamEvent } from "common";
+import type { UpstreamMessage } from "./chat";
 import { streamChatReply } from "./tool-loop";
 
 const realFetch = globalThis.fetch;
@@ -32,7 +33,7 @@ const textRound = (text: string): string[] => [
 ];
 
 async function collect(
-  messages: { role: "user"; content: string }[],
+  messages: UpstreamMessage[],
 ): Promise<ChatStreamEvent[]> {
   const result = await streamChatReply("key", "openai/gpt-4o", messages);
   if (!result.ok) {

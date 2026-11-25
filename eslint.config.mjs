@@ -86,6 +86,11 @@ export default tseslint.config(
       "no-restricted-syntax": [
         "error",
         {
+          selector: "TSTypeLiteral",
+          message:
+            "Declare a named interface instead of an inline object type.",
+        },
+        {
           selector:
             "CallExpression[arguments.length=0][callee.property.name='json']",
           message:

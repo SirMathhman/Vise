@@ -1,7 +1,27 @@
 /**
+ * A successful Result, holding its value.
+ */
+export interface Success<T> {
+  /** Always true for a success. */
+  ok: true;
+  /** The successful value. */
+  value: T;
+}
+
+/**
+ * A failed Result, holding its error.
+ */
+export interface Failure<E> {
+  /** Always false for a failure. */
+  ok: false;
+  /** The error. */
+  error: E;
+}
+
+/**
  * A value or an error, returned instead of thrown.
  */
-export type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
+export type Result<T, E> = Success<T> | Failure<E>;
 
 /**
  * Wraps a successful value in a Result.
