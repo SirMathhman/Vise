@@ -46,6 +46,7 @@ Dependency direction is one way: frontend and backend depend on common, never th
 ## Future Work
 
 - Typed, runtime-validated upstream clients with a shared `Result` type instead of exceptions.
+- Runtime validation of every backend response in the frontend API client, so the wire contract is checked, not cast.
 - A structured error enum that answers what failed, where, why, and how to fix it, mapped to HTTP status codes in one place.
 - Configuration loaded once at startup and validated, instead of read per request.
 - A response cache with a bounded TTL in front of the models upstream.

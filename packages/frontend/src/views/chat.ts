@@ -1,5 +1,5 @@
 import type { ChatRequest } from "common";
-import { parseChatStreamEvent } from "common";
+import { pageText, parseChatStreamEvent } from "common";
 import { openChat } from "../api";
 import { errorMessage, requireElement } from "../dom";
 import { hasModel } from "./models";
@@ -10,6 +10,27 @@ const chatMessage = requireElement("chat-message") as HTMLTextAreaElement;
 const chatSend = requireElement("chat-send") as HTMLButtonElement;
 const chatStatus = requireElement("chat-status") as HTMLParagraphElement;
 const chatReply = requireElement("chat-reply") as HTMLDivElement;
+const replyPrev = requireElement("reply-prev") as HTMLButtonElement;
+const replyNext = requireElement("reply-next") as HTMLButtonElement;
+const replyPageLabel = requireElement("reply-page");
+
+// The reply is shown a page at a time, so a long answer fits the window.
+const REPLY_PAGE_CHARS = 100;
+let replyText = "";
+let replyPage = 0;
+
+// Shows one page of the reply. While streaming, follow shows the newest text.
+function renderReply(follow: boolean): void {
+  const pages = pageText(replyText, REPLY_PAGE_CHARS);
+  if (follow) {
+    replyPage = pages.length - 1;
+  }
+  replyPage = Math.min(replyPage, pages.length - 1);
+  chatReply.textContent = pages[replyPage];
+  replyPageLabel.textContent = `Part ${String(replyPage + 1)} of ${String(pages.length)}`;
+  replyPrev.disabled = replyPage === 0;
+  replyNext.disabled = replyPage >= pages.length - 1;
+}
 
 // The active model is remembered in this browser only.
 function readActiveModel(): string {
@@ -43,7 +64,8 @@ function applyChatPayload(payload: string): boolean {
   }
   const event = parsed.value;
   if (event.type === "delta") {
-    chatReply.textContent += event.text;
+    replyText += event.text;
+    renderReply(true);
     return false;
   }
   chatStatus.textContent =
@@ -91,7 +113,8 @@ async function sendMessage(): Promise<void> {
 
   const request: ChatRequest = { model, message };
   chatSend.disabled = true;
-  chatReply.textContent = "";
+  replyText = "";
+  renderReply(true);
   chatStatus.textContent = "Waiting for reply…";
   try {
     const opened = await openChat(request);
@@ -113,4 +136,13 @@ export function initChat(): void {
     writeActiveModel(modelInput.value.trim());
   });
   chatSend.addEventListener("click", () => void sendMessage());
+  replyPrev.addEventListener("click", () => {
+    replyPage -= 1;
+    renderReply(false);
+  });
+  replyNext.addEventListener("click", () => {
+    replyPage += 1;
+    renderReply(false);
+  });
+  renderReply(true);
 }

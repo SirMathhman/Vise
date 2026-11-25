@@ -137,8 +137,7 @@ button {
 
 .reply {
   white-space: pre-wrap;
-  margin-top: 0.75rem;
-  min-height: 2rem;
+  margin-top: 0.5rem;
 }
 
 table {

@@ -80,6 +80,19 @@ export function parseChatStreamEvent(
   return err("Unexpected chat event");
 }
 
+// Splits text into pages of at most pageSize characters, so long text fits a bounded area.
+// Empty text is one empty page.
+export function pageText(text: string, pageSize: number): string[] {
+  if (text.length === 0) {
+    return [""];
+  }
+  const pages: string[] = [];
+  for (let start = 0; start < text.length; start += pageSize) {
+    pages.push(text.slice(start, start + pageSize));
+  }
+  return pages;
+}
+
 export function greet(name: string): string {
   return `Hello, ${name}!`;
 }
