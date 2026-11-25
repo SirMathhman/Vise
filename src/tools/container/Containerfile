@@ -1,3 +1,0 @@
-# The image of a session container: Alpine with a shell and git. Built once by ensureImage.
-FROM docker.io/library/alpine:latest
-RUN apk add --no-cache git
