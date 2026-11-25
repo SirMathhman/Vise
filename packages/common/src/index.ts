@@ -33,6 +33,11 @@ export interface SaveOpenRouterKeyRequest {
   apiKey: string;
 }
 
+export interface ChatRequest {
+  model: string;
+  message: string;
+}
+
 export function greet(name: string): string {
   return `Hello, ${name}!`;
 }

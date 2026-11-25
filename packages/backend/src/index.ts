@@ -1,4 +1,5 @@
 import type {
+  ChatRequest,
   ErrorResponse,
   HealthResponse,
   ModelsResponse,
@@ -6,6 +7,7 @@ import type {
   SaveOpenRouterKeyRequest,
 } from "common";
 import { greet } from "common";
+import { streamChatReply } from "./chat";
 import { fetchModels } from "./openrouter";
 import {
   clearSavedOpenRouterKey,
@@ -19,7 +21,7 @@ const port = Number(process.env.PORT ?? 3000);
 const FRONTEND_ORIGIN = "http://localhost:5173";
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": FRONTEND_ORIGIN,
-  "Access-Control-Allow-Methods": "GET, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
@@ -53,6 +55,40 @@ async function openRouterSettings(req: Request): Promise<Response> {
   return json(body);
 }
 
+// Sends one message and streams the model's reply back as plain text.
+async function chat(req: Request): Promise<Response> {
+  const input = (await req.json().catch(() => ({}))) as Partial<ChatRequest>;
+  const model = typeof input.model === "string" ? input.model.trim() : "";
+  const message = typeof input.message === "string" ? input.message.trim() : "";
+  if (!model || !message) {
+    const body: ErrorResponse = {
+      error: "model and message must be non-empty strings",
+    };
+    return json(body, 400);
+  }
+
+  const apiKey = await getOpenRouterKey();
+  if (!apiKey) {
+    const body: ErrorResponse = {
+      error:
+        "No OpenRouter API key is set. Add one in the UI or set OPENROUTER_API_KEY.",
+    };
+    return json(body, 500);
+  }
+
+  try {
+    const reply = await streamChatReply(apiKey, model, message);
+    return new Response(reply.pipeThrough(new TextEncoderStream()), {
+      headers: { ...CORS_HEADERS, "Content-Type": "text/plain; charset=utf-8" },
+    });
+  } catch (err) {
+    const body: ErrorResponse = {
+      error: err instanceof Error ? err.message : String(err),
+    };
+    return json(body, 502);
+  }
+}
+
 Bun.serve({
   port,
   async fetch(req) {
@@ -64,6 +100,12 @@ Bun.serve({
 
     if (url.pathname === "/api/settings/openrouter") {
       return openRouterSettings(req);
+    }
+
+    if (url.pathname === "/api/chat") {
+      return req.method === "POST"
+        ? chat(req)
+        : json({ error: "Method not allowed" } satisfies ErrorResponse, 405);
     }
 
     if (url.pathname === "/api/models") {

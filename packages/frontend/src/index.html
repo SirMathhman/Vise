@@ -48,6 +48,22 @@
         </form>
         <p id="key-error" role="alert"></p>
       </section>
+      <section class="status">
+        <h2>Chat</h2>
+        <label for="model-input">Model</label>
+        <input
+          id="model-input"
+          list="model-options"
+          autocomplete="off"
+          placeholder="Search for a model"
+        />
+        <datalist id="model-options"></datalist>
+        <label for="chat-message">Message</label>
+        <textarea id="chat-message" rows="3"></textarea>
+        <button id="chat-send" type="button">Send</button>
+        <p id="chat-status" role="status"></p>
+        <div id="chat-reply" class="reply"></div>
+      </section>
     </main>
     <script type="module" src="./main.ts"></script>
   </body>

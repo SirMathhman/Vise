@@ -1,4 +1,5 @@
 import type {
+  ChatRequest,
   ErrorResponse,
   HealthResponse,
   ModelsResponse,
@@ -41,6 +42,9 @@ async function loadHealth(): Promise<void> {
 
 const modelsStatus = requireElement("models-status") as HTMLParagraphElement;
 const modelsBody = requireElement("models-body") as HTMLTableSectionElement;
+const modelOptions = requireElement("model-options") as HTMLDataListElement;
+// Ids of the models loaded from the backend; the chat only accepts these.
+const knownModelIds = new Set<string>();
 
 function cell(text: string): HTMLTableCellElement {
   const td = document.createElement("td");
@@ -70,6 +74,15 @@ async function loadModels(): Promise<void> {
       );
       modelsBody.append(row);
     }
+    knownModelIds.clear();
+    const options = data.models.map((m) => {
+      knownModelIds.add(m.id);
+      const option = document.createElement("option");
+      option.value = m.id;
+      option.label = m.name;
+      return option;
+    });
+    modelOptions.replaceChildren(...options);
     modelsStatus.textContent = `${String(data.models.length)} models`;
   } catch (err) {
     modelsStatus.textContent = `Unavailable: ${err instanceof Error ? err.message : String(err)}`;
@@ -144,6 +157,82 @@ async function clearKey(): Promise<void> {
 
 keyForm.addEventListener("submit", (event) => void saveKey(event));
 keyClear.addEventListener("click", () => void clearKey());
+
+const ACTIVE_MODEL_KEY = "vise.activeModel";
+const modelInput = requireElement("model-input") as HTMLInputElement;
+const chatMessage = requireElement("chat-message") as HTMLTextAreaElement;
+const chatSend = requireElement("chat-send") as HTMLButtonElement;
+const chatStatus = requireElement("chat-status") as HTMLParagraphElement;
+const chatReply = requireElement("chat-reply") as HTMLDivElement;
+
+// The active model is remembered in this browser only.
+function readActiveModel(): string {
+  try {
+    return localStorage.getItem(ACTIVE_MODEL_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeActiveModel(id: string): void {
+  try {
+    localStorage.setItem(ACTIVE_MODEL_KEY, id);
+  } catch {
+    // Storage is unavailable; the choice still applies until the page reloads.
+  }
+}
+
+modelInput.value = readActiveModel();
+modelInput.addEventListener("change", () => {
+  writeActiveModel(modelInput.value.trim());
+});
+
+// Sends one message to the active model and shows the reply as it streams in.
+async function sendMessage(): Promise<void> {
+  const model = modelInput.value.trim();
+  const message = chatMessage.value.trim();
+  chatStatus.textContent = "";
+  if (!knownModelIds.has(model)) {
+    chatStatus.textContent = "Choose a model from the list.";
+    return;
+  }
+  if (!message) {
+    chatStatus.textContent = "Type a message first.";
+    return;
+  }
+
+  const request: ChatRequest = { model, message };
+  chatSend.disabled = true;
+  chatReply.textContent = "";
+  chatStatus.textContent = "Waiting for reply…";
+  try {
+    const res = await fetch(`${API_BASE}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    });
+    if (!res.ok) {
+      const err = (await res.json()) as ErrorResponse;
+      throw new Error(err.error);
+    }
+    if (!res.body) {
+      throw new Error("The reply had no body");
+    }
+    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+    let chunk = await reader.read();
+    while (!chunk.done) {
+      chatReply.textContent += chunk.value;
+      chunk = await reader.read();
+    }
+    chatStatus.textContent = "Done";
+  } catch (err) {
+    chatStatus.textContent = `Unavailable: ${err instanceof Error ? err.message : String(err)}`;
+  } finally {
+    chatSend.disabled = false;
+  }
+}
+
+chatSend.addEventListener("click", () => void sendMessage());
 
 greeting.textContent = greet("frontend");
 refresh.addEventListener("click", () => void loadHealth());
