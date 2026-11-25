@@ -1,0 +1,18 @@
+{
+  "name": "vise",
+  "private": true,
+  "version": "0.0.0",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "start:backend": "bun --filter backend start",
+    "start:frontend": "bun --filter frontend start",
+    "build": "bun run --if-present --filter '*' build",
+    "typecheck": "bun run --if-present --filter '*' typecheck"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.5",
+    "typescript": "^7.0.2"
+  }
+}
