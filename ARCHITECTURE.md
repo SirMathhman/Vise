@@ -25,7 +25,7 @@ This document describes the target architecture. It is a reference for where the
 
 - **Session**: one conversation. It starts with its first turn and ends when the user starts a new conversation. A page reload does not end it, and no hook runs then.
 - **Turn**: one chat request that allows tools. A summary request sends no tools and is not a turn.
-- **Hook**: a shell command the user sets in `hooks.json` for `beforeSession`, `afterSession`, `beforeTurn`, or `afterTurn`. Hooks are user configuration, never model output. A failing before hook stops its step. A failing after hook is logged and never changes the reply.
+- **Hook**: a shell command the user sets in the Hooks tab for `beforeSession`, `afterSession`, `beforeTurn`, or `afterTurn`. The global command in `hooks.json` runs first, then the chosen profile's command in `profile-hooks.json`; a failing global command stops the rest. Hooks are user configuration, never model output. A failing before hook stops its step; a failing after hook is logged and never changes the reply.
 
 ## Structure
 
@@ -40,7 +40,8 @@ Dependency direction is one way: frontend and backend depend on common, never th
 
 ## Structure: Lifecycle
 
-- Lifecycle is its own module, `hooks/`. It reads `hooks.json` on each event, validates it with zod, and runs each command through Bash, on every platform. It depends on common, the process runner, and the config location; no tool or upstream client depends on it.
+- Lifecycle is its own module, `hooks/`. It reads `hooks.json` and `profile-hooks.json` on each event, validates them with zod, and runs each command through Bash, on every platform. It depends on common, the process runner, the config location, and the notes module, which it uses only to confirm that a profile id names a profile note. No tool or upstream client depends on it.
+- The Hooks tab is a frontend view. It edits both files through the hooks routes in `hooks/hooks-routes.ts`, which accept a profile only if it is a profile note. Profile commands are never stored in notes, so the note tools cannot read or write them.
 - The chat route calls the hook module before the upstream call and when the reply stream ends. Session end has its own route.
 - Hook processes and shell commands share one process runner in `process/`. It applies the time limit, the output cap, and the credential filter. No second runner exists.
 
@@ -74,7 +75,7 @@ Dependency direction is one way: frontend and backend depend on common, never th
 
 ## Security Concerns
 
-- **Trust boundary**: the backend trusts nothing from upstream or from the browser. Both are validated. It accepts browser requests only from the frontend dev origin, `http://localhost:5173`, never a wildcard.
+- **Trust boundary**: the backend trusts nothing from upstream or from the browser. Both are validated. It accepts browser requests only from the frontend dev origin, `http://localhost:5173`, never a wildcard. Every request that changes data must come from that origin with a JSON body, and the server listens on `127.0.0.1` only.
 - **Key exposure**: the UI-saved upstream API key is stored in a per-user config file outside the project (`%APPDATA%\vise\openrouter.env`), or read from the environment, and is never returned in responses or logs. The UI sends it once, on save. No sandbox mount reaches that folder. The sandbox also masks the old `packages/backend/.env` path as defense in depth; a command that reads another secret file inside the project can still send it upstream as tool output.
 - **Open proxy**: any client that can reach the backend can spend the operator's upstream quota. Missing control: authentication on proxy routes.
 
@@ -84,11 +85,13 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - The after-turn hook runs from the stream's flush, which does not run when the client disconnects. An aborted turn gets no after-turn hook.
 - A reload or closed tab loses the session without its after-session hook. Nothing records that the session ended.
 - Hook errors are plain strings that include command output, and the browser receives them.
+- Profile commands are keyed by profile id and kept after the note is deleted, so they outlive their profile. Saves read and rewrite the whole file, so two saves at once can drop one.
 
 ## Security Concerns: Hooks
 
-- **Trust boundary**: hooks run on the host with the backend's privileges, outside the sandbox. The config folder is outside every tool's reach, so the model cannot write `hooks.json`. Hooks are trusted user configuration.
-- **Unauthenticated trigger**: `POST /api/session/end` runs the after-session hook for any caller. A page open in the user's browser can send a simple cross-origin POST with no body; the browser hides the reply, but the command has already run. Missing control: require a JSON content type, which forces a preflight the server refuses, and check the origin.
+- **Trust boundary**: hooks run on the host with the backend's privileges, outside the sandbox. The config folder is outside every tool's reach, so the model cannot write either file. Hooks are trusted user configuration, and the Hooks tab and its routes are the only writers.
+- **Unauthenticated writes**: a write must come from the frontend origin with a JSON body, which stops other websites and plain form posts. A local program can still send that origin header and save commands the host will run. Missing control: a secret the frontend sends with each write.
+- **Unauthenticated trigger**: `POST /api/session/end` runs the after-session hook, and its body names the profile whose command runs. The origin and JSON checks apply to it, but a local program can still send them. Missing control: the same secret as for writes.
 - **Output**: hook error text, up to the runner's 20,000-character cap, reaches the browser and the log. Missing control: a smaller cap for error text.
 
 ## Security Concerns: Approvals and Commands
@@ -133,6 +136,7 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - An after-turn hook that runs on every end of a turn, including an aborted one, from the route rather than the stream's flush.
 - Hook failures as a structured error enum that names the event, the file, and the exit code, with the output capped.
 - A time limit per hook, since every hook now shares the 30-second limit.
+- Profile commands removed with their profile note.
 
 ## Performance
 

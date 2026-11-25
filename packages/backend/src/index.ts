@@ -20,7 +20,7 @@ import { systemContextText, withSystemContext } from "./chat/chat";
 import { streamChatReply } from "./chat/tool-loop";
 import { toolDefinitions } from "./tools";
 import { buildModelSelf } from "./chat/model-facts";
-import { CORS_HEADERS, errorJson, json, readBody } from "./http";
+import { CORS_HEADERS, errorJson, json, readBody, refuseWrite } from "./http";
 import { PROJECT_ROOT } from "./project/workdir";
 import { fetchModels } from "./openrouter";
 import { HOOK_TIMEOUT_MS, runHook } from "./hooks/hooks";
@@ -235,12 +235,18 @@ async function models(): Promise<Response> {
 }
 
 Bun.serve({
+  hostname: "127.0.0.1",
   port,
   async fetch(req) {
     const url = new URL(req.url);
 
     if (req.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
+    }
+
+    const refusal = refuseWrite(req);
+    if (refusal) {
+      return refusal;
     }
 
     if (url.pathname === "/api/settings/openrouter") {

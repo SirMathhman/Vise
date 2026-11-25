@@ -51,3 +51,33 @@ export async function readBody<S extends z.ZodType>(
 ): Promise<Result<z.output<S>, ParseError>> {
   return parseJson(schema, await req.text());
 }
+
+/**
+ * Refuses a request that changes data unless it comes from the frontend origin, and unless its
+ * body, when it has one, is JSON. Reads pass through. A cross-site form or a script on another
+ * page cannot send a request that passes this check.
+ *
+ * @param req The request.
+ * @returns The refusal to send, or undefined when the request may proceed.
+ */
+export function refuseWrite(req: Request): Response | undefined {
+  if (
+    req.method === "GET" ||
+    req.method === "HEAD" ||
+    req.method === "OPTIONS"
+  ) {
+    return undefined;
+  }
+  if (req.headers.get("origin") !== FRONTEND_ORIGIN) {
+    return errorJson(
+      "Requests that change data must come from the frontend.",
+      403,
+    );
+  }
+  const hasBody = req.body !== null;
+  const contentType = req.headers.get("content-type") ?? "";
+  if (hasBody && !contentType.startsWith("application/json")) {
+    return errorJson("Requests that change data must send JSON.", 415);
+  }
+  return undefined;
+}
