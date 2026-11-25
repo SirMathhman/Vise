@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { HooksResponseSchema, parseJson } from "common";
 import { createNote } from "../../src/notes/notes-store";
 import { handleHooks } from "../../src/hooks/hooks-routes";
 import { runHook } from "../../src/hooks/hooks";
@@ -81,9 +82,12 @@ describe("profile hooks", () => {
       new Request(`${BASE}/api/hooks`),
       "/api/hooks",
     );
-    expect(await read.json()).toEqual({
-      global: {},
-      profiles: { [profile.value.id]: { afterTurn: "exit 0" } },
+    expect(parseJson(HooksResponseSchema, await read.text())).toEqual({
+      ok: true,
+      value: {
+        global: {},
+        profiles: { [profile.value.id]: { afterTurn: "exit 0" } },
+      },
     });
   });
 });
