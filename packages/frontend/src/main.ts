@@ -1,4 +1,10 @@
-import type { ErrorResponse, HealthResponse, ModelsResponse } from "common";
+import type {
+  ErrorResponse,
+  HealthResponse,
+  ModelsResponse,
+  OpenRouterSettings,
+  SaveOpenRouterKeyRequest,
+} from "common";
 import { greet } from "common";
 
 // Backend base URL. Change this if the backend runs elsewhere.
@@ -69,7 +75,66 @@ async function loadModels(): Promise<void> {
   }
 }
 
+const keyStatus = requireElement<HTMLParagraphElement>("key-status");
+const keyForm = requireElement<HTMLFormElement>("key-form");
+const keyInput = requireElement<HTMLInputElement>("key-input");
+const keyClear = requireElement<HTMLButtonElement>("key-clear");
+const keyError = requireElement<HTMLParagraphElement>("key-error");
+
+// Sends a request and returns the parsed JSON body, or throws the backend's error message.
+async function callApi<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, init);
+  const body = (await res.json()) as T | ErrorResponse;
+  if (!res.ok) {
+    throw new Error((body as ErrorResponse).error);
+  }
+  return body as T;
+}
+
+function showKeyStatus(configured: boolean): void {
+  keyStatus.textContent = configured ? "Key set" : "No key set";
+}
+
+async function loadKeyStatus(): Promise<void> {
+  try {
+    const settings = await callApi<OpenRouterSettings>("/api/settings/openrouter");
+    showKeyStatus(settings.configured);
+  } catch (err) {
+    keyStatus.textContent = `Unavailable: ${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
+keyForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  keyError.textContent = "";
+  const input: SaveOpenRouterKeyRequest = { apiKey: keyInput.value };
+  try {
+    const settings = await callApi<OpenRouterSettings>("/api/settings/openrouter", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    keyInput.value = "";
+    showKeyStatus(settings.configured);
+    void loadModels();
+  } catch (err) {
+    keyError.textContent = err instanceof Error ? err.message : String(err);
+  }
+});
+
+keyClear.addEventListener("click", async () => {
+  keyError.textContent = "";
+  try {
+    const settings = await callApi<OpenRouterSettings>("/api/settings/openrouter", { method: "DELETE" });
+    showKeyStatus(settings.configured);
+    void loadModels();
+  } catch (err) {
+    keyError.textContent = err instanceof Error ? err.message : String(err);
+  }
+});
+
 greeting.textContent = greet("frontend");
 refresh.addEventListener("click", () => void loadHealth());
 void loadHealth();
 void loadModels();
+void loadKeyStatus();

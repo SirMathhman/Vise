@@ -5,8 +5,8 @@
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
-    "start": "bun run src/index.ts",
-    "dev": "bun --hot src/index.ts",
+    "start": "bun --no-env-file run src/index.ts",
+    "dev": "bun --no-env-file --hot src/index.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

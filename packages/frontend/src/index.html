@@ -33,6 +33,16 @@
           </table>
         </div>
       </section>
+      <section class="status">
+        <h2>OpenRouter API key</h2>
+        <p id="key-status">Checking…</p>
+        <form id="key-form">
+          <input id="key-input" type="password" autocomplete="off" placeholder="Paste API key" />
+          <button type="submit">Save</button>
+          <button id="key-clear" type="button">Clear</button>
+        </form>
+        <p id="key-error" role="alert"></p>
+      </section>
     </main>
     <script type="module" src="./main.ts"></script>
   </body>

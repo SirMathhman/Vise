@@ -24,6 +24,15 @@ export interface ErrorResponse {
   error: string;
 }
 
+export interface OpenRouterSettings {
+  /** True when a key is saved in the UI or set in the environment. The key itself is never returned. */
+  configured: boolean;
+}
+
+export interface SaveOpenRouterKeyRequest {
+  apiKey: string;
+}
+
 export function greet(name: string): string {
   return `Hello, ${name}!`;
 }
