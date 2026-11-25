@@ -4,12 +4,13 @@ This document describes the target architecture. It is a reference for where the
 
 ## Definitions
 
-- **Common**: the `packages/common` workspace. Holds the zod schemas and wire types (JSON exchanged between frontend and backend), plus pure helpers. It has no I/O; zod is its only runtime dependency.
+- **Common**: the `packages/common` workspace: zod schemas, wire types, and pure helpers. No I/O; zod is its only runtime dependency.
 - **Backend**: the `packages/backend` Bun server. It is the only code that holds secrets and the only code that talks to third-party APIs. An **upstream** is any external service it calls, such as OpenRouter.
 - **Frontend**: the `packages/frontend` browser app. It renders data and never contacts third-party services directly.
-- **Stream event**: a typed wire event in `common`: `delta`, `done`, `error`, or `approval`. Every streamed reply ends with exactly one `done` or `error`, so a cut-off reply is never mistaken for a finished one. An `approval` is not an ending: the reply waits until the user answers it.
-- **System context**: instructions the backend adds to every upstream request, such as the project root. Only the backend writes it. The wire request carries user and assistant turns only.
-- **Reply context**: the facts one reply passes to every tool: the project root, the abort signal, and `ModelSelf`, the model's own id, name, window, reply reserve, budget still free, and tool names. The loop passes this one object whole. It names no tool and imports no tool's types.
+- **Stream event**: a typed wire event in `common`: `delta`, `done`, `error`, or `approval`. Every reply ends with exactly one `done` or `error`, so a cut-off reply is never mistaken for a finished one. An `approval` waits for the user's answer.
+- **System context**: instructions the backend adds to every upstream request: the project root and the chosen profile's text. Only the backend writes it. The wire request carries user and assistant turns, and a profile id.
+- **Profile**: a note in the profile category. Its content is system instructions the user chose for a chat.
+- **Reply context**: the facts one reply passes to every tool: the project root, the abort signal, and `ModelSelf`, the model's own id, name, window, reply reserve, budget still free, and tool names. The loop passes it whole and names no tool.
 - **Note**: a named record: id, name, category, summary, and content. Names are unique ignoring case. Notes are stored outside the project, in `notes.json`.
 
 ## Definitions: Tools and Approval
@@ -17,7 +18,7 @@ This document describes the target architecture. It is a reference for where the
 - **Local tool**: a function the model may call that the backend runs itself, such as reading project files. Its schema is owned by the backend and its output is untrusted text. A tool that changes a file, runs a command, or overwrites or deletes a note never acts directly: it returns an approval, a title and body shown to the user plus an apply step, and the apply step runs only after the user approves. A file change re-checks the file first.
 - **Decision**: the user's answer to an approval, `approve` or `reject`. It is a named union carried from the approval route to the tool loop, never a boolean; a wait that ends without an answer is `undefined`, a third state no boolean can express.
 - **Sentinel**: an upstream value with a special meaning, such as a price of -1 for variable pricing. It maps to an explicit unknown in the wire type, never to arithmetic.
-- **Compaction**: when a send would pass 80% of the model's window, the browser asks the model for a summary of the older conversation, then keeps the summary and the most recent ten messages. The summary turn never applies a change and is not kept as history.
+- **Compaction**: when a send would pass 80% of the model's window, the browser asks for a summary of the older conversation and keeps it with the most recent ten messages. The summary applies no change and is not kept as history.
 - **Invariant**: API keys never leave the backend. Every deserialization, including upstream responses, streamed chunks, request bodies, and saved history, goes through a zod schema via `parseJson`. ESLint bans `JSON.parse` and bare `.json()` calls elsewhere.
 
 ## Structure
@@ -27,7 +28,7 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - Backend layers, from outside in: HTTP routing, then handlers, then upstream clients, then pure mapping functions. Each layer depends only on layers inside it.
 - Each upstream gets its own module (`openrouter.ts` style) that owns its URL, auth, timeouts, validation, and error mapping.
 - The tool loop, which decides when a tool runs and when the reply stops, is its own module. It depends on the upstream client, the tool registry, and the approval registry; none of them depends on it.
-- The reply context is built in `chat/` by a pure function, not in the HTTP route. That function counts exactly what the upstream request will carry, including the system context and tool definitions, and has unit tests. The route only calls it and passes the result on.
+- The reply context is built in `chat/` by a pure, unit-tested function that counts exactly what the upstream request will carry: system context, profile text, and tool definitions. The route looks up a profile through the notes module and passes its text in; it builds no system message.
 - The approval registry in `approvals.ts` holds the replies waiting on a user answer. Only the tool loop opens an approval and only the approval route answers one. It is scoped to a single reply and lives no longer than that reply.
 - Notes are a backend module, `notes/`, with the same layering: a store owns `notes.json` and returns results, and only the note routes and tools map those results to HTTP statuses or tool text. Route handlers live in the notes module, not in `index.ts`.
 
@@ -48,6 +49,8 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - Every page load hits the upstream, so rate limits and latency are shared by all users. Each turn re-sends the conversation. Near the limit, compaction spends one extra upstream call on a summary; the budget drops the oldest messages only after that, once a conversation passes the context window less 4,000 tokens reserved for the reply.
 - A stream that fails after the first byte has already returned HTTP 200, so the status code cannot report the failure.
 - The model's list call returns every note, and each note call reads the whole file. Neither has a size cap yet.
+- A profile is read on every send, so editing it changes a conversation in progress without notice. A profile too large for the budget gets the message for a long conversation, which names the wrong fix: the profile must be shortened.
+- A profile refusal is a plain string, not a `NoteError` kind, so the route cannot map it to a status by kind.
 
 ## Potential Problems: Tools and Commands
 
@@ -70,7 +73,7 @@ Dependency direction is one way: frontend and backend depend on common, never th
 
 ## Security Concerns: Chat and Files
 
-- **Chat input**: the backend enforces the conversation budget: the model's context window, less 4,000 tokens reserved for the reply. Before a send the backend can only estimate, at four characters per token; OpenRouter's usage count, which includes tool definitions, is shown in the meter after each reply. The backend rejects any client-supplied system role, so the client cannot set the model's instructions. The client still supplies the assistant turns, so it can forge prior context. Each request spends paid upstream tokens. A compaction summary is sent with an empty tool list, so it can read no files and propose no changes. Missing controls: a backend-side model allowlist and authentication.
+- **Chat input**: the backend enforces the conversation budget: the model's context window, less 4,000 tokens reserved for the reply. Before a send the backend can only estimate, at four characters per token; OpenRouter's usage count, which includes tool definitions, is shown in the meter after each reply. The backend rejects any client-supplied system role, so the client cannot set the model's instructions. The client still supplies the assistant turns, so it can forge prior context. Each request spends paid upstream tokens. A compaction summary is sent with an empty tool list, so it can read no files and propose no changes. The system role also carries a profile's text: the user picks the profile, but a model may have written its note (see Notes). Missing controls: a backend-side model allowlist and authentication.
 
 ## Security Concerns: Files and Local Data
 
@@ -82,6 +85,7 @@ Dependency direction is one way: frontend and backend depend on common, never th
 ## Security Concerns: Notes
 
 - **Trust boundary**: a note's text can come from a model reply, a file, or a web page, so it is untrusted. Any injected instruction that reaches the model can call the note tools. Creating a note may run without approval. Overwriting or deleting one must go through an approval that shows the note's current and new fields, as file writes do.
+- **Profiles**: a profile's text is system instructions, the most trusted text the model sees. The model may create a profile directly, like any note, so a planted profile can reach the picker. Missing control: user approval for creating a profile, and a check on its text.
 - **Data exposure**: `list_notes` and `read_note` send note content upstream as tool output. A note holding a key or password therefore leaves the machine on every read. Missing control: a way to mark a note as never sent to the model.
 - **Loss**: deletion is permanent. Missing control: a trash that keeps deleted notes for a set period, so an approved or mistaken delete can be undone.
 
