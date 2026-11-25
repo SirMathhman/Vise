@@ -162,6 +162,9 @@ export const ApprovalAckSchema = z.object({ ok: z.literal(true) });
 
 /**
  * Checks one untrusted value against the ChatStreamEvent contract.
+ *
+ * @param value The untrusted value.
+ * @returns The checked event, or an error when the value is not a known event.
  */
 export function parseChatStreamEvent(
   value: unknown,
@@ -171,6 +174,9 @@ export function parseChatStreamEvent(
 
 /**
  * Checks an untrusted list of conversation turns.
+ *
+ * @param value The untrusted value.
+ * @returns The checked messages, or an error when the value is not a list of turns.
  */
 export function parseChatMessageList(
   value: unknown,

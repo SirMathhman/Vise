@@ -25,6 +25,8 @@ export default tseslint.config(
     // Every exported declaration carries a JSDoc comment.
     plugins: { jsdoc },
     rules: {
+      "jsdoc/require-param": "error",
+      "jsdoc/require-returns": "error",
       "jsdoc/require-jsdoc": [
         "error",
         {

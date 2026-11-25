@@ -57,6 +57,11 @@ async function readCapped(
  * Runs a program and returns its exit code and its output as text, cut to MAX_CHARS. Output is
  * read as it arrives, and a program that runs past the timeout is stopped without waiting on
  * its output.
+ *
+ * @param argv The program and its arguments.
+ * @param cwd The folder the program runs in.
+ * @param timeoutMs How long it may run before it is stopped.
+ * @returns The exit code and the capped output, or an error when it could not start or timed out.
  */
 export async function runCaptured(
   argv: string[],

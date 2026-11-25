@@ -114,6 +114,13 @@ async function* replyEvents(
  * Sends the conversation and returns the reply as typed events, as they arrive. Tool
  * rounds are run here, so the client sees only the text and any approvals to answer.
  * The signal ends the reply when the client goes away.
+ *
+ * @param apiKey The OpenRouter key to send with each request.
+ * @param model The model id to ask.
+ * @param messages The conversation to send.
+ * @param signal Aborts the reply when the client has gone away.
+ * @param allowTools Whether tools may be offered in every round.
+ * @returns The reply as typed events, or the error that prevented it from starting.
  */
 export async function streamChatReply(
   apiKey: string,

@@ -20,6 +20,9 @@ const knownModels = new Map<string, number>();
 
 /**
  * Whether a model is in the loaded list.
+ *
+ * @param id The model id to check.
+ * @returns True when the model is loaded.
  */
 export function hasModel(id: string): boolean {
   return knownModels.has(id);
@@ -27,6 +30,9 @@ export function hasModel(id: string): boolean {
 
 /**
  * The context window of a loaded model, or undefined when the model is not loaded.
+ *
+ * @param id The model id to look up.
+ * @returns The context window in tokens, or undefined when the model is not loaded.
  */
 export function contextLengthOf(id: string): number | undefined {
   return knownModels.get(id);

@@ -46,6 +46,11 @@ export const toolDefinitions = [...TOOLS.values()].map(
 
 /**
  * Runs a tool the model called. An unknown name is reported back to the model as text.
+ *
+ * @param root The project root.
+ * @param name The name of the tool the model called.
+ * @param argumentsJson The model's arguments, as JSON text.
+ * @returns The tool's result text, or an approval card for a change that needs the user.
  */
 export async function runTool(
   root: string,

@@ -24,6 +24,9 @@ function perMillion(price: string): number | null {
 
 /**
  * Lists the models the account can use, with prices in USD per million tokens. Returns an error when OpenRouter cannot be reached or its reply does not match the expected shape.
+ *
+ * @param apiKey The OpenRouter key to list the models with.
+ * @returns The models, with prices in USD per million tokens, or the error that stopped the request.
  */
 export async function fetchModels(
   apiKey: string,

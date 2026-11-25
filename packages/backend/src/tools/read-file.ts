@@ -50,6 +50,11 @@ const ReadArgumentsSchema = z.object({
 /**
  * The lines start..end of a file's text, cut to MAX_CHARS. The header names the lines
  * actually returned, so a cut read never looks complete.
+ *
+ * @param text The whole file's text.
+ * @param start The first line to return, counting from 1.
+ * @param end The last line to return, or undefined for the end of the file.
+ * @returns The lines with a header naming the range returned, or a message explaining why the range is invalid.
  */
 export function readRange(
   text: string,
@@ -84,6 +89,10 @@ export function readRange(
 
 /**
  * Runs the tool for the model's arguments and returns the text the model reads back.
+ *
+ * @param root The project root.
+ * @param argumentsJson The model's arguments, as JSON text.
+ * @returns The text of the requested lines, or the reason the file cannot be read.
  */
 export async function runReadFile(
   root: string,

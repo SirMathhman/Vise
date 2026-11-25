@@ -20,6 +20,12 @@ const PODMAN_GRACE_MS = 15_000;
  * The podman command that runs one shell command in a throwaway container. Only the project is
  * mounted, read-write at /workspace. Secrets are masked, no host environment reaches the
  * container, and `timeout` inside it ends the whole process tree.
+ *
+ * @param root The project folder to mount.
+ * @param name The container name, used to remove it if needed.
+ * @param command The bash command to run.
+ * @param timeoutSeconds The time limit the container's timeout enforces.
+ * @returns The podman command as a list of arguments.
  */
 export function sandboxArguments(
   root: string,
@@ -57,6 +63,11 @@ export function sandboxArguments(
 /**
  * Runs one shell command in the sandbox and returns its exit code and output. It never falls
  * back to running on this machine.
+ *
+ * @param root The project folder to mount.
+ * @param command The bash command to run.
+ * @param timeoutMs How long the command may run.
+ * @returns The exit code and output, or an error when the sandbox could not run the command.
  */
 export async function executeInSandbox(
   root: string,

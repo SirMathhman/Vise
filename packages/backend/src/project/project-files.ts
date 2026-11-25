@@ -8,6 +8,10 @@ const MAX_BYTES = 2_000_000;
 
 /**
  * Resolves a requested path against the root. Anything outside the root is refused.
+ *
+ * @param root The folder the path must stay inside.
+ * @param requested The path as the model or user wrote it.
+ * @returns The path relative to the root with forward slashes, or an error when it is outside.
  */
 export function resolveInside(
   root: string,
@@ -32,6 +36,9 @@ export function resolveInside(
 
 /**
  * The files git tracks or would track under root, excluding anything .gitignore matches.
+ *
+ * @param root The project root to list files under.
+ * @returns The tracked and visible files, or an error when git cannot list them.
  */
 export async function projectFiles(
   root: string,
@@ -82,6 +89,10 @@ async function gitDirectories(root: string): Promise<Result<string[], string>> {
 /**
  * True when the relative path lies inside git's own directory, where a written hook would
  * run on the next git command.
+ *
+ * @param root The project root.
+ * @param relative The project-relative path to check.
+ * @returns True when git reports the path as its own folder.
  */
 export async function isGitInternal(
   root: string,
@@ -111,6 +122,10 @@ export async function isGitInternal(
 /**
  * Opens a project text file for a tool. Refuses anything outside the root, anything git
  * ignores, symbolic links, binary files, and files over the size limit.
+ *
+ * @param root The project root.
+ * @param requested The file path as the model or user wrote it.
+ * @returns The file's absolute path and text, or the reason it cannot be read.
  */
 export async function readProjectText(
   root: string,

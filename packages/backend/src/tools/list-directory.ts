@@ -54,6 +54,9 @@ type Tree = Map<string, Tree | null>;
 
 /**
  * Builds a directory tree from relative file paths. A directory maps its names to subtrees; a file maps to null.
+ *
+ * @param files Relative file paths, with forward slashes.
+ * @returns The root of the tree.
  */
 export function buildTree(files: string[]): Tree {
   const root: Tree = new Map();
@@ -77,6 +80,12 @@ export function buildTree(files: string[]): Tree {
 
 /**
  * Renders the directory at target as indented lines, directories first, cut to maxEntries.
+ *
+ * @param files The project's file paths.
+ * @param target The folder to list, relative to the root.
+ * @param maxDepth How many levels to descend.
+ * @param maxEntries The most lines to return.
+ * @returns The listing as indented text, or a note explaining why there is nothing to list.
  */
 export function renderListing(
   files: string[],
@@ -128,6 +137,10 @@ export function renderListing(
 
 /**
  * Runs the tool for the model's arguments and returns the text the model reads back.
+ *
+ * @param root The project root.
+ * @param argumentsJson The model's arguments, as JSON text.
+ * @returns The listing, or the reason it cannot be produced.
  */
 export async function runListDirectory(
   root: string,

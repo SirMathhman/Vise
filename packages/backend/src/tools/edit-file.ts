@@ -48,6 +48,11 @@ const EditArgumentsSchema = z.object({
 
 /**
  * Replaces the single occurrence of oldText, or says why it cannot.
+ *
+ * @param text The file's current text.
+ * @param oldText The exact text to replace.
+ * @param newText The text to put in its place.
+ * @returns The new text, or the reason the replacement cannot be made.
  */
 export function replaceOnce(
   text: string,
@@ -77,6 +82,10 @@ function diffBody(oldText: string, newText: string): string {
 
 /**
  * Proposes one edit for approval. Returns the reason it cannot be proposed as text.
+ *
+ * @param root The project root.
+ * @param argumentsJson The model's arguments, as JSON text.
+ * @returns The approval card to show, or the reason the edit cannot be proposed.
  */
 export async function runEditFile(
   root: string,

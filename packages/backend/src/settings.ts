@@ -35,6 +35,8 @@ async function writeKeyLines(lines: string[]): Promise<void> {
 
 /**
  * The key saved from the UI, or undefined when none is saved.
+ *
+ * @returns The saved key, or undefined when none is saved.
  */
 export async function getSavedOpenRouterKey(): Promise<string | undefined> {
   const line = (await readKeyLines()).find(isKeyLine);
@@ -44,6 +46,8 @@ export async function getSavedOpenRouterKey(): Promise<string | undefined> {
 
 /**
  * The UI-saved key wins; otherwise fall back to the environment variable.
+ *
+ * @returns The saved key when there is one, otherwise the environment variable, or undefined.
  */
 export async function getOpenRouterKey(): Promise<string | undefined> {
   return (
@@ -53,6 +57,8 @@ export async function getOpenRouterKey(): Promise<string | undefined> {
 
 /**
  * Saves the key to the config file, replacing any key saved before.
+ *
+ * @param apiKey The key to save.
  */
 export async function saveOpenRouterKey(apiKey: string): Promise<void> {
   const lines = (await readKeyLines()).filter((line) => !isKeyLine(line));

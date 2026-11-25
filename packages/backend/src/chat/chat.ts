@@ -67,6 +67,10 @@ export type UpstreamMessage =
 /**
  * Puts the backend's own instructions in front of the conversation. The client never
  * sends these, so it cannot change the model's instructions.
+ *
+ * @param messages The conversation, without system instructions.
+ * @param directory The project root to name in the note.
+ * @returns The conversation with the system note first.
  */
 export function withSystemContext(
   messages: ChatMessage[],
@@ -206,6 +210,9 @@ async function* upstreamItems(
 /**
  * Streams one round as text events. Returns the tool calls that end it, or undefined
  * when the reply is over.
+ *
+ * @param body The raw body of the upstream stream.
+ * @returns Each line of the body, one at a time.
  */
 export async function* readRound(
   body: ReadableStream<Uint8Array>,
@@ -225,6 +232,9 @@ export async function* readRound(
 /**
  * Turns one OpenRouter body into typed events, with no tool calls. Every stream ends
  * with exactly one "done" or "error" event.
+ *
+ * @param body The raw body of the upstream stream.
+ * @returns The events of one round, as they happen.
  */
 export function chatEvents(
   body: ReadableStream<Uint8Array>,
@@ -246,6 +256,9 @@ async function* textOnly(
 
 /**
  * Turns a generator of events into a stream that a client can read.
+ *
+ * @param events The events to read from.
+ * @returns A stream of the same events, for a client to read.
  */
 export function streamFrom(
   events: AsyncGenerator<ChatStreamEvent, void>,
@@ -268,6 +281,12 @@ export function streamFrom(
 /**
  * Sends a request upstream, and returns the raw body. The backend's tools are offered unless
  * allowTools is false.
+ *
+ * @param apiKey The OpenRouter key to send with the request.
+ * @param model The model id to ask.
+ * @param messages The conversation to send.
+ * @param allowTools Whether the model may be offered the backend's tools.
+ * @returns The raw body to read, or the error that prevented the request.
  */
 export async function openUpstream(
   apiKey: string,

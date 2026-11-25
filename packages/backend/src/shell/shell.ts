@@ -42,6 +42,11 @@ const CommandArgumentsSchema = z.object({
 /**
  * Runs one command directly on this machine, outside the sandbox, in the root. The tool does
  * not use it; it shares the output capture with the sandbox and is kept for local use.
+ *
+ * @param root The folder the command runs in.
+ * @param command The bash command to run.
+ * @param timeoutMs How long the command may run.
+ * @returns The exit code and output, or an error when the command did not finish.
  */
 export async function executeCommand(
   root: string,
@@ -57,6 +62,10 @@ export async function executeCommand(
 
 /**
  * Proposes one command for approval. Returns the reason it cannot be proposed as text.
+ *
+ * @param root The project root.
+ * @param argumentsJson The model's arguments, as JSON text.
+ * @returns The approval card to show, or the reason the command cannot be proposed.
  */
 export function runRunCommand(
   root: string,

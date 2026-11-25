@@ -21,6 +21,11 @@ async function failureFrom(res: Response): Promise<string> {
 
 /**
  * Calls a JSON endpoint and checks the reply against the schema for it.
+ *
+ * @param path The endpoint path, starting with a slash.
+ * @param schema The schema the reply must match.
+ * @param init Options for the request, such as the method and body.
+ * @returns The checked reply, or the error to show the user.
  */
 export async function apiJson<S extends z.ZodType>(
   path: string,
@@ -42,6 +47,9 @@ export async function apiJson<S extends z.ZodType>(
 
 /**
  * Opens the chat stream for one request. Returns the raw body to read, or the error.
+ *
+ * @param request The model and the conversation to send.
+ * @returns The raw body to read, or the error to show the user.
  */
 export async function openChat(
   request: ChatRequest,

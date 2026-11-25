@@ -106,6 +106,10 @@ async function validateNewPath(
 
 /**
  * Proposes one new file for approval. Returns the reason it cannot be proposed as text.
+ *
+ * @param root The project root.
+ * @param argumentsJson The model's arguments, as JSON text.
+ * @returns The approval card to show, or the reason the file cannot be created.
  */
 export async function runCreateFile(
   root: string,

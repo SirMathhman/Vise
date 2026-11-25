@@ -10,6 +10,10 @@ export type ParseError =
 
 /**
  * Checks an untrusted value against a zod schema.
+ *
+ * @param schema The schema the value must match.
+ * @param value The untrusted value.
+ * @returns The checked value, or the reason it does not match.
  */
 export function parseValue<S extends z.ZodType>(
   schema: S,
@@ -29,6 +33,10 @@ export function parseValue<S extends z.ZodType>(
 
 /**
  * Turns JSON text into a checked value. Every deserialization goes through here.
+ *
+ * @param schema The schema the value must match.
+ * @param text The untrusted JSON text.
+ * @returns The checked value, or the reason the text could not be read.
  */
 export function parseJson<S extends z.ZodType>(
   schema: S,
@@ -47,6 +55,9 @@ export function parseJson<S extends z.ZodType>(
 
 /**
  * User-facing text for a parse failure. A wrong shape names the field that failed.
+ *
+ * @param error The parse failure to describe.
+ * @returns The user-facing text.
  */
 export function describeParseError(error: ParseError): string {
   if (error.kind === "notJson") {

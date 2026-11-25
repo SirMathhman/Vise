@@ -28,6 +28,8 @@ export interface OpenApproval {
 
 /**
  * Registers an approval that a reply is waiting on.
+ *
+ * @returns The approval's id, a promise for the user's answer, and a close function.
  */
 export function openApproval(): OpenApproval {
   const id = randomUUID();
@@ -45,6 +47,10 @@ export function openApproval(): OpenApproval {
 
 /**
  * Records the user's answer. Returns false when no reply is waiting on that id.
+ *
+ * @param id The approval id from the card the user sees.
+ * @param approved True to approve the change, false to reject it.
+ * @returns True when a reply was waiting on that id, false otherwise.
  */
 export function decideApproval(id: string, approved: boolean): boolean {
   const resolve = waiting.get(id);
@@ -59,6 +65,11 @@ export function decideApproval(id: string, approved: boolean): boolean {
 /**
  * Waits for the user's answer. Returns undefined when none comes: the client has gone away,
  * or the timeout passes first. The approval is released either way.
+ *
+ * @param pending The approval to wait on.
+ * @param signal Aborts the wait when the client has gone away.
+ * @param timeoutMs How long to wait before giving up.
+ * @returns The user's answer, or undefined when the wait ended without one.
  */
 export async function waitForApproval(
   pending: OpenApproval,
