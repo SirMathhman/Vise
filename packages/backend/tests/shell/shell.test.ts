@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { tmpdir } from "node:os";
-import { executeCommand } from "./shell";
+import { executeCommand } from "../../src/shell/shell";
 
 describe("executeCommand", () => {
   test("returns the exit code and the output", async () => {

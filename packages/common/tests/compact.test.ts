@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { ChatMessage } from "./index";
-import { SUMMARY_PREFIX, compactConversation } from "./index";
+import type { ChatMessage } from "../src/index";
+import { SUMMARY_PREFIX, compactConversation } from "../src/index";
 
 describe("compactConversation", () => {
   test("starts with the new summary and keeps the most recent messages", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { ChatRequestSchema, parseJson } from "common";
-import { withSystemContext } from "./chat";
+import { withSystemContext } from "../../src/chat/chat";
 
 describe("withSystemContext", () => {
   test("puts exactly one system message first, built from the project directory", () => {

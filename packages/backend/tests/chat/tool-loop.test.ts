@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { ChatStreamEvent } from "common";
-import type { UpstreamMessage } from "../openrouter";
-import { streamChatReply } from "./tool-loop";
+import type { UpstreamMessage } from "../../src/openrouter";
+import { streamChatReply } from "../../src/chat/tool-loop";
 
 const realFetch = globalThis.fetch;
 afterEach(() => {

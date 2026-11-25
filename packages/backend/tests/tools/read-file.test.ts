@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readRange } from "./read-file";
+import { readRange } from "../../src/tools/read-file";
 
 const text = "one\ntwo\nthree\nfour";
 

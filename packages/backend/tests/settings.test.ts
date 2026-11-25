@@ -6,8 +6,8 @@ import {
   clearSavedOpenRouterKey,
   getSavedOpenRouterKey,
   saveOpenRouterKey,
-} from "./settings";
-import { PROJECT_ROOT } from "./project/workdir";
+} from "../src/settings";
+import { PROJECT_ROOT } from "../src/project/workdir";
 
 describe("saved OpenRouter key", () => {
   test("is stored outside the project, in the config folder, and can be cleared", async () => {

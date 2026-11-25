@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { fetchModels, openUpstream, readRound } from "./openrouter";
+import { fetchModels, openUpstream, readRound } from "../src/openrouter";
 
 const realFetch = globalThis.fetch;
 afterEach(() => {

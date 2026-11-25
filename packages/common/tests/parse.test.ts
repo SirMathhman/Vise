@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
-import { describeParseError, parseJson } from "./index";
+import { describeParseError, parseJson } from "../src/index";
 
 const Person = z.object({ name: z.string() });
 

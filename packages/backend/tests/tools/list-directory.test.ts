@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
-import { renderListing, resolveInside } from "./list-directory";
+import { renderListing, resolveInside } from "../../src/tools/list-directory";
 
 const files = [
   "README.md",

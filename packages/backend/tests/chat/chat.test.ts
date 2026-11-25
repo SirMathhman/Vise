@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ChatStreamEvent } from "common";
-import { chatEvents } from "./chat";
+import { chatEvents } from "../../src/chat/chat";
 
 const encoder = new TextEncoder();
 

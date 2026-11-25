@@ -5,7 +5,7 @@ import {
   parseChatMessageList,
   parseChatStreamEvent,
   trimToBudget,
-} from "./index";
+} from "../src/index";
 
 describe("conversation budget", () => {
   test("the limit leaves room for the reply", () => {

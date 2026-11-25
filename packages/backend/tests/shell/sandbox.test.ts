@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { SANDBOX_IMAGE, sandboxArguments } from "./sandbox";
+import { SANDBOX_IMAGE, sandboxArguments } from "../../src/shell/sandbox";
 
 describe("sandboxArguments", () => {
   test("mounts only the project, drops privileges, and bounds the command with timeout", () => {

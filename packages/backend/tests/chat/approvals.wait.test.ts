@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { decideApproval, openApproval, waitForApproval } from "./approvals";
+import {
+  decideApproval,
+  openApproval,
+  waitForApproval,
+} from "../../src/chat/approvals";
 
 describe("waitForApproval", () => {
   test("returns the user's answer and releases the approval", async () => {

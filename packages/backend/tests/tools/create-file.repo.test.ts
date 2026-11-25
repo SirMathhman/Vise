@@ -8,7 +8,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { runCreateFile } from "./create-file";
+import { runCreateFile } from "../../src/tools/create-file";
 
 // A throwaway git repository with an ignored folder, an existing file, and a folder that
 // links out of the project (where the OS allows links).

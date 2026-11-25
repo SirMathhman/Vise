@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { runReadFile } from "./read-file";
+import { runReadFile } from "../../src/tools/read-file";
 
 // A throwaway git repository with one tracked-or-visible file, one ignored file, a binary
 // file, an oversized file, and (where the OS allows) a symbolic link.
