@@ -6,7 +6,7 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "bun run --parallel --filter backend --filter frontend dev",
+    "dev": "bun scripts/dev.ts",
     "start:backend": "bun --filter backend start",
     "dev:frontend": "bun --filter frontend dev",
     "build:frontend": "bun --filter frontend build",
