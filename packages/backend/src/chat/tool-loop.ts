@@ -1,7 +1,8 @@
 import type { ChatStreamEvent, Result } from "common";
 import { err, ok } from "common";
-import type { ToolCall, UpstreamMessage } from "./chat";
-import { openUpstream, readRound, streamFrom } from "./chat";
+import type { ToolCall, UpstreamMessage } from "../openrouter";
+import { openUpstream, readRound } from "../openrouter";
+import { streamFrom } from "./chat";
 import type { Approval } from "./approvals";
 import { openApproval, waitForApproval } from "./approvals";
 import { runTool, toolDefinitions } from "../tools";

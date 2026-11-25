@@ -5,9 +5,8 @@ This document describes the target architecture. It is a reference for where the
 ## Definitions
 
 - **Common**: the `packages/common` workspace. Holds the zod schemas and wire types (JSON exchanged between frontend and backend), plus pure helpers. It has no I/O; zod is its only runtime dependency.
-- **Backend**: the `packages/backend` Bun server. It is the only code that holds secrets and the only code that talks to third-party APIs.
+- **Backend**: the `packages/backend` Bun server. It is the only code that holds secrets and the only code that talks to third-party APIs. An **upstream** is any external service it calls, such as OpenRouter.
 - **Frontend**: the `packages/frontend` browser app. It renders data and never contacts third-party services directly.
-- **Upstream**: any external service the backend calls, such as OpenRouter.
 - **Stream event**: a typed wire event in `common`: `delta`, `done`, `error`, or `approval`. Every streamed reply ends with exactly one `done` or `error`, so a cut-off reply is never mistaken for a finished one. An `approval` is not an ending: the reply waits until the user answers it.
 - **System context**: instructions the backend adds to every upstream request, such as the project root. Only the backend writes it. The wire request carries user and assistant turns only.
 - **Local tool**: a function the model may call that the backend runs itself, such as listing or reading project files. Its schema is owned by the backend and its output is untrusted text. A tool that changes a file or runs a command never acts directly: it returns an approval, a title and body shown to the user plus an apply step, and the apply step runs only after the user approves. A file change also re-checks the file first.
