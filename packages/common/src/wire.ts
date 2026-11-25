@@ -29,6 +29,12 @@ export const ModelsResponseSchema = z.object({
 });
 export type ModelsResponse = z.infer<typeof ModelsResponseSchema>;
 
+export const WorkdirResponseSchema = z.object({
+  /** The project root directory the backend runs from. */
+  directory: z.string(),
+});
+export type WorkdirResponse = z.infer<typeof WorkdirResponseSchema>;
+
 export const ErrorResponseSchema = z.object({ error: z.string() });
 export type ErrorResponse = z.infer<typeof ErrorResponseSchema>;
 
@@ -49,11 +55,21 @@ export type SaveOpenRouterKeyRequest = z.infer<
   typeof SaveOpenRouterKeyRequestSchema
 >;
 
-export const ChatMessageSchema = z.object({
+const MessageTextSchema = z
+  .string()
+  .refine((text) => text.trim() !== "", "Each message must have text");
+
+// A turn of the conversation: a message from the user or from the assistant.
+export const ChatTurnSchema = z.object({
   role: z.enum(["user", "assistant"]),
-  content: z
-    .string()
-    .refine((text) => text.trim() !== "", "Each message must have text"),
+  content: MessageTextSchema,
+});
+
+// A message in a request or the saved history. The system note that names the working
+// directory is also a message, so it is allowed here.
+export const ChatMessageSchema = z.object({
+  role: z.enum(["system", "user", "assistant"]),
+  content: MessageTextSchema,
 });
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 
@@ -88,5 +104,5 @@ export function parseChatStreamEvent(
 export function parseChatMessageList(
   value: unknown,
 ): Result<ChatMessage[], ParseError> {
-  return parseValue(ChatMessageListSchema, value);
+  return parseValue(z.array(ChatTurnSchema), value);
 }

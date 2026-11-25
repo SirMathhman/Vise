@@ -5,6 +5,7 @@ import type {
   ModelsResponse,
   OpenRouterSettings,
   Result,
+  WorkdirResponse,
 } from "common";
 import {
   ChatRequestSchema,
@@ -17,6 +18,7 @@ import {
 import type { ParseError } from "common";
 import { z } from "zod";
 import { streamChatReply } from "./chat";
+import { PROJECT_ROOT } from "./workdir";
 import { fetchModels } from "./openrouter";
 import {
   clearSavedOpenRouterKey,
@@ -152,6 +154,11 @@ Bun.serve({
 
     if (url.pathname === "/api/models") {
       return models();
+    }
+
+    if (url.pathname === "/api/workdir") {
+      const body: WorkdirResponse = { directory: PROJECT_ROOT };
+      return json(body);
     }
 
     if (url.pathname === "/api/health") {

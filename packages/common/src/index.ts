@@ -18,13 +18,19 @@ export function fitsBudget(messages: ChatMessage[]): boolean {
   );
 }
 
-// Drops the oldest messages until the conversation fits. The newest message is always kept.
+// Drops the oldest messages until the conversation fits. The newest message and a leading
+// system message are always kept.
 export function trimToBudget(messages: ChatMessage[]): ChatMessage[] {
+  const pinned = messages[0]?.role === "system" ? messages.slice(0, 1) : [];
+  const rest = messages.slice(pinned.length);
   let start = 0;
-  while (start < messages.length - 1 && !fitsBudget(messages.slice(start))) {
+  while (
+    start < rest.length - 1 &&
+    !fitsBudget([...pinned, ...rest.slice(start)])
+  ) {
     start += 1;
   }
-  return messages.slice(start);
+  return [...pinned, ...rest.slice(start)];
 }
 
 export function greet(name: string): string {
