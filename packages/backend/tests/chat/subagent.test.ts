@@ -35,10 +35,13 @@ const textRound = (text: string): string[] => [
   "data: [DONE]",
 ];
 
-const callsRound = (
-  calls: { name: string; args: Record<string, string> }[],
-): string[] => [
-  `data: ${JSON.stringify({ choices: [{ index: 0, delta: { tool_calls: calls.map((c, i) => ({ index: i, id: `call_${i + 1}`, type: "function", function: { name: c.name, arguments: JSON.stringify(c.args) } })) }, finish_reason: null }] })}`,
+interface CallSpec {
+  name: string;
+  args: Record<string, string>;
+}
+
+const callsRound = (calls: CallSpec[]): string[] => [
+  `data: ${JSON.stringify({ choices: [{ index: 0, delta: { tool_calls: calls.map((c, i) => ({ index: i, id: `call_${String(i + 1)}`, type: "function", function: { name: c.name, arguments: JSON.stringify(c.args) } })) }, finish_reason: null }] })}`,
   `data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`,
 ];
 
