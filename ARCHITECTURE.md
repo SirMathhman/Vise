@@ -10,6 +10,7 @@ This document describes the target architecture. It is a reference for where the
 - **Upstream**: any external service the backend calls, such as OpenRouter.
 - **Wire type**: a type in `common` that describes JSON exchanged between frontend and backend.
 - **Stream event**: a typed wire event in `common`: `delta`, `done`, or `error`. Every streamed reply ends with exactly one `done` or `error`, so a cut-off reply is never mistaken for a finished one.
+- **System context**: instructions the backend adds to every upstream request, such as the project root. Only the backend writes it. The wire request carries user and assistant turns only.
 - **Sentinel**: an upstream value with a special meaning, such as a price of -1 for variable pricing. It maps to an explicit unknown in the wire type, never to arithmetic.
 - **Invariant**: API keys never leave the backend. Every deserialization, including upstream responses, streamed chunks, request bodies, and saved history, goes through a zod schema via `parseJson`. ESLint bans `JSON.parse` and bare `.json()` calls elsewhere.
 
@@ -39,7 +40,8 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - **Trust boundary**: the backend trusts nothing from upstream or from the browser. Both are validated.
 - **Key exposure**: the upstream API key is saved to the backend's git-ignored `.env` file, or read from the environment, and is never returned in responses or logs. The UI sends it once, on save.
 - **Open proxy**: any client that can reach the backend can spend the operator's upstream quota. Missing control: authentication on proxy routes.
-- **Chat input**: the backend enforces the shared conversation budget of 40 messages and 20,000 characters. The client supplies the assistant turns, so it can forge prior context. Each request spends paid upstream tokens. Missing controls: a backend-side model allowlist and authentication.
+- **Chat input**: the backend enforces the shared conversation budget of 40 messages and 20,000 characters. The backend rejects any client-supplied system role, so the client cannot set the model's instructions. The client still supplies the assistant turns, so it can forge prior context. Each request spends paid upstream tokens. Missing controls: a backend-side model allowlist and authentication.
+- **Path disclosure**: the system context names the server's project root. It must reach the upstream only, never the browser or local history. No endpoint returns it, so the path cannot be read from the backend.
 - **Local history**: the conversation is stored in browser localStorage as plain text. Anyone with access to the browser profile can read it, so it must never hold keys.
 - **Cross-origin access**: the backend allows only the frontend dev origin, `http://localhost:5173`, with no wildcard.
 - **Rendering**: model metadata is untrusted text. It must be set with `textContent`, never `innerHTML`.

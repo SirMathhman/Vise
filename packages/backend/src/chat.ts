@@ -139,11 +139,29 @@ export function chatEvents(
   });
 }
 
+// A message as sent upstream. Only the backend adds system messages.
+export interface UpstreamMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+// Puts the backend's own instructions in front of the conversation. The client never
+// sends these, so it cannot change the model's instructions.
+export function withSystemContext(
+  messages: ChatMessage[],
+  directory: string,
+): UpstreamMessage[] {
+  return [
+    { role: "system", content: `The working directory is ${directory}.` },
+    ...messages,
+  ];
+}
+
 // Sends the conversation and returns the reply as typed events, as they arrive.
 export async function streamChatReply(
   apiKey: string,
   model: string,
-  messages: ChatMessage[],
+  messages: UpstreamMessage[],
 ): Promise<Result<ReadableStream<ChatStreamEvent>, string>> {
   let res: Response;
   try {

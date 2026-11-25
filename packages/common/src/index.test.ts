@@ -25,20 +25,6 @@ describe("conversation budget", () => {
     ];
     expect(trimToBudget(messages)).toEqual(messages.slice(1));
   });
-
-  test("trimToBudget keeps a leading system message", () => {
-    const messages = [
-      { role: "system" as const, content: "dir" },
-      { role: "user" as const, content: "a".repeat(15000) },
-      { role: "assistant" as const, content: "b".repeat(15000) },
-      { role: "user" as const, content: "c" },
-    ];
-    expect(trimToBudget(messages)).toEqual([
-      messages[0],
-      messages[2],
-      messages[3],
-    ]);
-  });
 });
 
 describe("parseChatMessageList", () => {

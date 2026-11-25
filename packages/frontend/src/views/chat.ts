@@ -2,7 +2,6 @@ import type { ChatMessage, ChatStreamEvent, Result } from "common";
 import {
   ChatMessageListSchema,
   ChatStreamEventSchema,
-  WorkdirResponseSchema,
   describeParseError,
   err,
   fitsBudget,
@@ -10,7 +9,7 @@ import {
   parseJson,
   trimToBudget,
 } from "common";
-import { apiJson, openChat } from "../api";
+import { openChat } from "../api";
 import { errorMessage, requireElement } from "../dom";
 import { hasModel } from "./models";
 
@@ -26,27 +25,6 @@ const chatStatus = requireElement("chat-status") as HTMLParagraphElement;
 // The conversation so far, and the exchange currently streaming in.
 let history: ChatMessage[] = [];
 let inFlight: { user: string; reply: string } | undefined;
-// The project root the backend reports. Each conversation starts with it, so the model knows it.
-let workdir: string | undefined;
-
-// Starts an empty conversation with a note on the working directory.
-function seedDirectory(): void {
-  if (workdir !== undefined && history.length === 0) {
-    history = [
-      { role: "system", content: `The working directory is ${workdir}.` },
-    ];
-  }
-}
-
-async function loadWorkdir(): Promise<void> {
-  const result = await apiJson("/api/workdir", WorkdirResponseSchema);
-  if (result.ok) {
-    workdir = result.value.directory;
-    seedDirectory();
-    saveHistory();
-    renderConversation();
-  }
-}
 
 // Storage is optional: without it the conversation lasts until the page reloads.
 function readStorage(key: string): string | null {
@@ -213,7 +191,6 @@ async function sendMessage(): Promise<void> {
 
 function newConversation(): void {
   history = [];
-  seedDirectory();
   saveHistory();
   chatStatus.textContent = "";
   renderConversation();
@@ -221,7 +198,6 @@ function newConversation(): void {
 
 export function initChat(): void {
   history = loadHistory();
-  void loadWorkdir();
   modelInput.value = readActiveModel();
   modelInput.addEventListener("change", () => {
     writeStorage(ACTIVE_MODEL_KEY, modelInput.value.trim());

@@ -5,7 +5,6 @@ import type {
   ModelsResponse,
   OpenRouterSettings,
   Result,
-  WorkdirResponse,
 } from "common";
 import {
   ChatRequestSchema,
@@ -17,7 +16,7 @@ import {
 } from "common";
 import type { ParseError } from "common";
 import { z } from "zod";
-import { streamChatReply } from "./chat";
+import { streamChatReply, withSystemContext } from "./chat";
 import { PROJECT_ROOT } from "./workdir";
 import { fetchModels } from "./openrouter";
 import {
@@ -108,7 +107,11 @@ async function chat(req: Request): Promise<Response> {
     );
   }
 
-  const reply = await streamChatReply(apiKey, model, messages);
+  const reply = await streamChatReply(
+    apiKey,
+    model,
+    withSystemContext(messages, PROJECT_ROOT),
+  );
   if (!reply.ok) {
     return errorJson(reply.error, 502);
   }
@@ -154,11 +157,6 @@ Bun.serve({
 
     if (url.pathname === "/api/models") {
       return models();
-    }
-
-    if (url.pathname === "/api/workdir") {
-      const body: WorkdirResponse = { directory: PROJECT_ROOT };
-      return json(body);
     }
 
     if (url.pathname === "/api/health") {

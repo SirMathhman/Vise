@@ -172,12 +172,6 @@ section.chat {
   color: #fff;
 }
 
-.bubble.system {
-  align-self: center;
-  color: var(--muted);
-  font-size: 0.8rem;
-}
-
 .bubble.assistant {
   align-self: flex-start;
   background: var(--bg);
