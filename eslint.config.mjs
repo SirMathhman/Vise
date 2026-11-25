@@ -1,5 +1,6 @@
 import eslint from "@eslint/js";
 import tseslint from "typescript-eslint";
+import folderFileLimit from "./eslint-rules/folder-file-limit.mjs";
 
 export default tseslint.config(
   {
@@ -18,6 +19,11 @@ export default tseslint.config(
   {
     files: ["**/*.mjs"],
     ...tseslint.configs.disableTypeChecked,
+  },
+  {
+    // No folder may directly hold more than 10 git-tracked or visible files.
+    plugins: { local: { rules: { "folder-file-limit": folderFileLimit } } },
+    rules: { "local/folder-file-limit": "error" },
   },
   {
     // Every deserialization goes through a zod schema. parseJson in common is the one

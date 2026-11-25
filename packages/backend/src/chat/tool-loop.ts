@@ -4,8 +4,8 @@ import type { ToolCall, UpstreamMessage } from "./chat";
 import { openUpstream, readRound, streamFrom } from "./chat";
 import type { Approval } from "./approvals";
 import { openApproval, waitForApproval } from "./approvals";
-import { runTool } from "./tools";
-import { PROJECT_ROOT } from "./workdir";
+import { runTool } from "../tools";
+import { PROJECT_ROOT } from "../project/workdir";
 
 // The most rounds of tool calls one reply may take before the backend stops.
 const MAX_TOOL_ROUNDS = 5;

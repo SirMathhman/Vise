@@ -1,8 +1,8 @@
-import type { Approval } from "../approvals";
-import { CREATE_FILE_TOOL, runCreateFile } from "../create-file";
-import { EDIT_FILE_TOOL, runEditFile } from "../edit-file";
-import { LIST_DIRECTORY_TOOL, runListDirectory } from "../list-directory";
-import { READ_FILE_TOOL, runReadFile } from "../read-file";
+import type { Approval } from "../chat/approvals";
+import { CREATE_FILE_TOOL, runCreateFile } from "./create-file";
+import { EDIT_FILE_TOOL, runEditFile } from "./edit-file";
+import { LIST_DIRECTORY_TOOL, runListDirectory } from "./list-directory";
+import { READ_FILE_TOOL, runReadFile } from "./read-file";
 
 // A tool the model may call: its definition for the request, and what running it returns.
 // A tool that changes files returns an Approval instead, and nothing changes until the user

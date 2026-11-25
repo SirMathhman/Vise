@@ -61,7 +61,7 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - Configuration loaded once at startup and validated, instead of read per request.
 - A response cache with a bounded TTL in front of the models upstream.
 - Authentication on backend routes that proxy paid upstreams.
-- Size rules in `eslint.config.mjs` for lines per file, lines per function, complexity, and entries per directory, each limit documented here.
+- Size rules in `eslint.config.mjs` for lines per file, lines per function, and complexity, each limit documented here. The entries-per-folder limit of 10 is enforced by `eslint-rules/folder-file-limit.mjs`.
 - Exact-match edits that also accept CRLF files and keep each file's line endings.
 - A byte cap on tool output, counted in the conversation budget, and tests for fragment merging, the file-listing helpers, and every refusal path of the reading tool: ignored, symbolic link, binary, oversized, and outside the root.
 

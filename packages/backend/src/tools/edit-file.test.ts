@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { openApproval, decideApproval } from "./approvals";
+import { openApproval, decideApproval } from "../chat/approvals";
 import { replaceOnce } from "./edit-file";
 
 describe("replaceOnce", () => {

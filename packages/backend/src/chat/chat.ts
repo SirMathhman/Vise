@@ -1,7 +1,7 @@
 import type { ChatMessage, ChatStreamEvent, Result } from "common";
 import { err, ok, parseJson } from "common";
 import { z } from "zod";
-import { toolDefinitions } from "./tools";
+import { toolDefinitions } from "../tools";
 
 const CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
 

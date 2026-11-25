@@ -3,8 +3,8 @@ import path from "node:path";
 import type { Result } from "common";
 import { err, ok, parseJson } from "common";
 import { z } from "zod";
-import type { Approval } from "./approvals";
-import { isGitInternal, resolveInside } from "./project-files";
+import type { Approval } from "../chat/approvals";
+import { isGitInternal, resolveInside } from "../project/project-files";
 
 export const CREATE_FILE_NAME = "create_file";
 

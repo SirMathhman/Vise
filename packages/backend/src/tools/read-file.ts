@@ -1,6 +1,6 @@
 import { parseJson } from "common";
 import { z } from "zod";
-import { readProjectText } from "./project-files";
+import { readProjectText } from "../project/project-files";
 
 export const READ_FILE_NAME = "read_file";
 

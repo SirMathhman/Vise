@@ -17,10 +17,10 @@ import {
 } from "common";
 import type { ParseError } from "common";
 import { z } from "zod";
-import { decideApproval } from "./approvals";
-import { withSystemContext } from "./chat";
-import { streamChatReply } from "./tool-loop";
-import { PROJECT_ROOT } from "./workdir";
+import { decideApproval } from "./chat/approvals";
+import { withSystemContext } from "./chat/chat";
+import { streamChatReply } from "./chat/tool-loop";
+import { PROJECT_ROOT } from "./project/workdir";
 import { fetchModels } from "./openrouter";
 import {
   clearSavedOpenRouterKey,

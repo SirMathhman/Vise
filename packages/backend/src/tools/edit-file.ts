@@ -1,8 +1,8 @@
 import type { Result } from "common";
 import { err, ok, parseJson } from "common";
 import { z } from "zod";
-import type { Approval } from "./approvals";
-import { readProjectText } from "./project-files";
+import type { Approval } from "../chat/approvals";
+import { readProjectText } from "../project/project-files";
 
 export const EDIT_FILE_NAME = "edit_file";
 

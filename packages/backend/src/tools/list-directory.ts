@@ -1,9 +1,9 @@
 import { parseJson } from "common";
 import { z } from "zod";
-import { projectFiles, resolveInside } from "./project-files";
+import { projectFiles, resolveInside } from "../project/project-files";
 
 // The path check is shared with the file reader; it stays importable from here.
-export { resolveInside } from "./project-files";
+export { resolveInside } from "../project/project-files";
 
 export const LIST_DIRECTORY_NAME = "list_directory";
 
