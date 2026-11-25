@@ -2,9 +2,10 @@ import { LIST_DIRECTORY_TOOL, runListDirectory } from "../list-directory";
 import { READ_FILE_TOOL, runReadFile } from "../read-file";
 
 // A tool the model may call: its definition for the request, and what running it returns.
+// Every tool receives the project root from the caller, never reads it on its own.
 interface Tool {
   definition: { type: "function"; function: { name: string } };
-  run: (argumentsJson: string) => Promise<string>;
+  run: (root: string, argumentsJson: string) => Promise<string>;
 }
 
 // Every tool the backend offers, keyed by name.
@@ -26,9 +27,10 @@ export const toolDefinitions = [...TOOLS.values()].map(
 
 // Runs a tool the model called. An unknown name is reported back to the model as text.
 export async function runTool(
+  root: string,
   name: string,
   argumentsJson: string,
 ): Promise<string> {
   const tool = TOOLS.get(name);
-  return tool ? tool.run(argumentsJson) : `Unknown tool: ${name}`;
+  return tool ? tool.run(root, argumentsJson) : `Unknown tool: ${name}`;
 }

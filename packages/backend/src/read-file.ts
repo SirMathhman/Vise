@@ -2,8 +2,7 @@ import { lstat } from "node:fs/promises";
 import path from "node:path";
 import { parseJson } from "common";
 import { z } from "zod";
-import { projectFiles, resolveInside } from "./list-directory";
-import { PROJECT_ROOT } from "./workdir";
+import { projectFiles, resolveInside } from "./project-files";
 
 export const READ_FILE_NAME = "read_file";
 
@@ -46,7 +45,8 @@ const ReadArgumentsSchema = z.object({
   end_line: z.number().int().min(1).optional(),
 });
 
-// The lines start..end of a file's text, cut to MAX_CHARS with a note when cut.
+// The lines start..end of a file's text, cut to MAX_CHARS. The header names the lines
+// actually returned, so a cut read never looks complete.
 export function readRange(
   text: string,
   start: number,
@@ -60,25 +60,38 @@ export function readRange(
     return "end_line must not be before start_line.";
   }
   const last = Math.min(end ?? lines.length, lines.length);
-  const selected = lines.slice(start - 1, last).join("\n");
-  const body =
-    selected.length > MAX_CHARS
-      ? `${selected.slice(0, MAX_CHARS)}\n... cut; read a smaller line range to see more`
-      : selected;
-  return `Lines ${String(start)}-${String(last)} of ${String(lines.length)}:\n${body}`;
+  let lastShown = start - 1;
+  let size = 0;
+  for (let n = start; n <= last; n += 1) {
+    const line = lines[n - 1] ?? "";
+    if (size + line.length > MAX_CHARS && lastShown >= start) {
+      break;
+    }
+    size += line.length + 1;
+    lastShown = n;
+  }
+  const joined = lines.slice(start - 1, lastShown).join("\n");
+  const cut = lastShown < last || joined.length > MAX_CHARS;
+  const body = cut
+    ? `${joined.slice(0, MAX_CHARS)}\n... cut; read a smaller line range to see more`
+    : joined;
+  return `Lines ${String(start)}-${String(lastShown)} of ${String(lines.length)}:\n${body}`;
 }
 
 // Runs the tool for the model's arguments and returns the text the model reads back.
-export async function runReadFile(argumentsJson: string): Promise<string> {
+export async function runReadFile(
+  root: string,
+  argumentsJson: string,
+): Promise<string> {
   const args = parseJson(ReadArgumentsSchema, argumentsJson);
   if (!args.ok) {
     return "The arguments were not valid. Use path, and optionally start_line and end_line.";
   }
-  const relative = resolveInside(PROJECT_ROOT, args.value.path);
+  const relative = resolveInside(root, args.value.path);
   if (!relative.ok) {
     return relative.error;
   }
-  const files = await projectFiles();
+  const files = await projectFiles(root);
   if (!files.ok) {
     return files.error;
   }
@@ -86,7 +99,7 @@ export async function runReadFile(argumentsJson: string): Promise<string> {
     return `"${args.value.path}" is not a file in the project, or git ignores it.`;
   }
 
-  const absolute = path.resolve(PROJECT_ROOT, relative.value);
+  const absolute = path.resolve(root, relative.value);
   const info = await lstat(absolute).catch(() => undefined);
   if (info === undefined) {
     return "The file could not be read.";

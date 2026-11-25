@@ -3,6 +3,7 @@ import { err, ok } from "common";
 import type { ToolCall, UpstreamMessage } from "./chat";
 import { openUpstream, readRound, streamFrom } from "./chat";
 import { runTool } from "./tools";
+import { PROJECT_ROOT } from "./workdir";
 
 // The most rounds of tool calls one reply may take before the backend stops.
 const MAX_TOOL_ROUNDS = 5;
@@ -11,7 +12,7 @@ const MAX_TOOL_ROUNDS = 5;
 async function toolResults(calls: ToolCall[]): Promise<UpstreamMessage[]> {
   const results: UpstreamMessage[] = [];
   for (const call of calls) {
-    const content = await runTool(call.name, call.arguments);
+    const content = await runTool(PROJECT_ROOT, call.name, call.arguments);
     results.push({ role: "tool", tool_call_id: call.id, content });
   }
   return results;

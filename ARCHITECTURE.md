@@ -21,7 +21,7 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - Backend layers, from outside in: HTTP routing, then handlers, then upstream clients, then pure mapping functions. Each layer depends only on layers inside it.
 - Each upstream gets its own module (`openrouter.ts` style) that owns its URL, auth, timeouts, validation, and error mapping.
 - The tool loop, which decides when a tool runs and when the reply stops, is its own module. It depends on the upstream client and the tool registry; neither depends on it.
-- Local tools are registered in `packages/backend/src/tools/index.ts`. Each has a zod argument schema. The loop dispatches by registry lookup and names no tool. The listing tool still spawns git itself, so passing that I/O in is open work.
+- Local tools are registered in `packages/backend/src/tools/index.ts`. Each has a zod argument schema. The loop dispatches by registry lookup and names no tool. Tools receive the project root as a parameter. All project file access, including the git-visible file list and path resolution, lives in `project-files.ts`, which the listing and reading tools share.
 - Routing is a table of path to handler, not a growing `if` chain inside one `fetch` function.
 - Frontend modules are split per view. Each view owns its DOM and calls a shared typed API client.
 - All backend-to-frontend data passes through a typed client in common, so the wire contract is compiled, not assumed.
@@ -37,6 +37,7 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - Each turn re-sends the conversation, so the shared budget drops the oldest messages once a conversation passes 40 messages or 20,000 characters.
 - A stream that fails after the first byte has already returned HTTP 200, so the status code cannot report the failure.
 - Tool rounds sit outside the conversation budget, and each one re-sends the growing conversation. The round limit must stop the loop before it opens a request it will never read.
+- A cut file's header still shows the whole line range, so a truncated read can look complete. The header must name the range actually returned.
 
 ## Security Concerns
 
@@ -44,7 +45,7 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - **Key exposure**: the upstream API key is saved to the backend's git-ignored `.env` file, or read from the environment, and is never returned in responses or logs. The UI sends it once, on save.
 - **Open proxy**: any client that can reach the backend can spend the operator's upstream quota. Missing control: authentication on proxy routes.
 - **Chat input**: the backend enforces the shared conversation budget of 40 messages and 20,000 characters. The backend rejects any client-supplied system role, so the client cannot set the model's instructions. The client still supplies the assistant turns, so it can forge prior context. Each request spends paid upstream tokens. Missing controls: a backend-side model allowlist and authentication.
-- **Path disclosure and tool output**: the system context names the project root, and tool listings name project files. Both reach the upstream only, never the browser or local history. Tools are read-only, list names but never contents, and skip git-ignored files. Tool output is untrusted text that can carry injected instructions. Missing control: a byte cap on tool output.
+- **Path disclosure and tool output**: the system context names the project root, and tool listings name project files. Both reach the upstream only, never the browser or local history. Tools are read-only and skip git-ignored files. The reading tool sends the contents of any git-visible file upstream, so a tracked file holding a secret leaks it. Missing control: a denylist for secret-like paths. Symbolic links are refused, and only a path on the git list can be read. Tool output is untrusted text that can carry injected instructions. Missing control: a byte cap on tool output across all rounds.
 - **Local history**: the conversation is stored in browser localStorage as plain text. Anyone with access to the browser profile can read it, so it must never hold keys.
 - **Cross-origin access**: the backend allows only the frontend dev origin, `http://localhost:5173`, with no wildcard.
 - **Rendering**: model metadata is untrusted text. It must be set with `textContent`, never `innerHTML`.
@@ -57,12 +58,12 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - A response cache with a bounded TTL in front of the models upstream.
 - Authentication on backend routes that proxy paid upstreams.
 - Size rules in `eslint.config.mjs` for lines per file, lines per function, complexity, and entries per directory, each limit documented here.
-- A byte cap on tool output, counted in the conversation budget, and tests for fragment merging and the listing helpers that spawn git.
+- A byte cap on tool output, counted in the conversation budget, and tests for fragment merging, the file-listing helpers, and every refusal path of the reading tool: ignored, symbolic link, binary, oversized, and outside the root.
 
 ## Performance
 
 - Upstream calls without timeouts or caching are the main latency risk.
 - The app is exactly the window size. The chat conversation is the only scroll region; every other section must fit the window or page its rows. Content clipped below the window is a defect, not a layout.
 - Re-sending the conversation on every turn makes cost grow with its length, so the shared budget caps each request.
-- Each tool call spawns git and rebuilds the file tree. Cache the file list per turn once a profile shows it matters.
+- Each file tool call spawns git and rebuilds the file list, so one turn with several reads runs git several times. Cache the list per turn once a profile shows it matters.
 - Nothing here has been profiled. Measure with a profiler before optimizing.

@@ -1,8 +1,9 @@
-import path from "node:path";
-import type { Result } from "common";
-import { err, ok, parseJson } from "common";
+import { parseJson } from "common";
 import { z } from "zod";
-import { PROJECT_ROOT } from "./workdir";
+import { projectFiles, resolveInside } from "./project-files";
+
+// The path check is shared with the file reader; it stays importable from here.
+export { resolveInside } from "./project-files";
 
 export const LIST_DIRECTORY_NAME = "list_directory";
 
@@ -45,28 +46,6 @@ const ListArgumentsSchema = z.object({
 
 // A directory tree: a directory maps names to subtrees, and a file maps to null.
 type Tree = Map<string, Tree | null>;
-
-// Resolves a requested path against the root. Anything outside the root is refused.
-export function resolveInside(
-  root: string,
-  requested: string,
-): Result<string, string> {
-  const absolute = path.resolve(root, requested);
-  const relative = path.relative(root, absolute);
-  if (
-    relative === ".." ||
-    relative.startsWith(`..${path.sep}`) ||
-    path.isAbsolute(relative)
-  ) {
-    return err("The path must be inside the project");
-  }
-  return ok(
-    relative
-      .split(path.sep)
-      .filter((part) => part !== "")
-      .join("/"),
-  );
-}
 
 export function buildTree(files: string[]): Tree {
   const root: Tree = new Map();
@@ -137,34 +116,20 @@ export function renderListing(
     : shown.join("\n");
 }
 
-// The files git tracks or would track, excluding anything .gitignore matches.
-export async function projectFiles(): Promise<Result<string[], string>> {
-  try {
-    const proc = Bun.spawn(
-      ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
-      { cwd: PROJECT_ROOT, stdout: "pipe", stderr: "ignore" },
-    );
-    const output = await new Response(proc.stdout).text();
-    if ((await proc.exited) !== 0) {
-      return err("Could not list the project files with git");
-    }
-    return ok(output.split("\0").filter((file) => file !== ""));
-  } catch {
-    return err("Could not run git to list the project files");
-  }
-}
-
 // Runs the tool for the model's arguments and returns the text the model reads back.
-export async function runListDirectory(argumentsJson: string): Promise<string> {
+export async function runListDirectory(
+  root: string,
+  argumentsJson: string,
+): Promise<string> {
   const args = parseJson(ListArgumentsSchema, argumentsJson);
   if (!args.ok) {
     return "The arguments were not valid. Use path, and optionally max_depth and max_entries.";
   }
-  const target = resolveInside(PROJECT_ROOT, args.value.path);
+  const target = resolveInside(root, args.value.path);
   if (!target.ok) {
     return target.error;
   }
-  const files = await projectFiles();
+  const files = await projectFiles(root);
   if (!files.ok) {
     return files.error;
   }
