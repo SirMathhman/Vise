@@ -31,16 +31,19 @@
 
 body {
   margin: 0;
-  min-height: 100vh;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
   background: var(--bg);
   color: var(--fg);
   line-height: 1.5;
 }
 
+/* Content is centered in a 60rem column and clipped to the window; nothing scrolls. */
 main {
-  max-width: 60rem;
-  margin: 0 auto;
-  padding: 2rem 1rem;
+  height: 100%;
+  overflow: hidden;
+  padding: 2rem max(1rem, calc(50vw - 30rem));
 }
 
 h1 {
@@ -110,14 +113,18 @@ button {
   font-size: 0.875rem;
 }
 
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+}
+
 .reply {
   white-space: pre-wrap;
   margin-top: 0.75rem;
   min-height: 2rem;
-}
-
-.table-wrap {
-  overflow-x: auto;
 }
 
 table {
@@ -131,7 +138,6 @@ td {
   text-align: left;
   padding: 0.4rem 0.5rem;
   border-bottom: 1px solid var(--border);
-  white-space: nowrap;
 }
 
 th {

@@ -1,5 +1,6 @@
 import type {
   ChatRequest,
+  ChatStreamEvent,
   ErrorResponse,
   HealthResponse,
   ModelsResponse,
@@ -55,7 +56,21 @@ async function openRouterSettings(req: Request): Promise<Response> {
   return json(body);
 }
 
-// Sends one message and streams the model's reply back as plain text.
+// Frames each chat event as one server-sent event. Failures after the stream starts
+// arrive as an "error" event, since the HTTP status has already been sent.
+const sseEncoder = new TextEncoder();
+// A stream can be piped only once, so each reply gets its own transform.
+function toSse(): TransformStream<ChatStreamEvent, Uint8Array> {
+  return new TransformStream<ChatStreamEvent, Uint8Array>({
+    transform(event, controller) {
+      controller.enqueue(
+        sseEncoder.encode(`data: ${JSON.stringify(event)}\n\n`),
+      );
+    },
+  });
+}
+
+// Sends one message and streams the model's reply back as server-sent events.
 async function chat(req: Request): Promise<Response> {
   const input = (await req.json().catch(() => ({}))) as Partial<ChatRequest>;
   const model = typeof input.model === "string" ? input.model.trim() : "";
@@ -78,8 +93,8 @@ async function chat(req: Request): Promise<Response> {
 
   try {
     const reply = await streamChatReply(apiKey, model, message);
-    return new Response(reply.pipeThrough(new TextEncoderStream()), {
-      headers: { ...CORS_HEADERS, "Content-Type": "text/plain; charset=utf-8" },
+    return new Response(reply.pipeThrough(toSse()), {
+      headers: { ...CORS_HEADERS, "Content-Type": "text/event-stream" },
     });
   } catch (err) {
     const body: ErrorResponse = {

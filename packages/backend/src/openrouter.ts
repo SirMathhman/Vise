@@ -39,6 +39,12 @@ function isOpenRouterModelList(
   );
 }
 
+// OpenRouter reports a negative price (-1) for models whose price varies per request.
+function perMillion(price: string): number | null {
+  const value = Number(price) * 1_000_000;
+  return value < 0 ? null : value;
+}
+
 export async function fetchModels(apiKey: string): Promise<ModelSummary[]> {
   const res = await fetch(MODELS_URL, {
     headers: { Authorization: `Bearer ${apiKey}` },
@@ -55,7 +61,7 @@ export async function fetchModels(apiKey: string): Promise<ModelSummary[]> {
     id: m.id,
     name: m.name,
     contextLength: m.context_length,
-    promptPricePerMillion: Number(m.pricing.prompt) * 1_000_000,
-    completionPricePerMillion: Number(m.pricing.completion) * 1_000_000,
+    promptPricePerMillion: perMillion(m.pricing.prompt),
+    completionPricePerMillion: perMillion(m.pricing.completion),
   }));
 }

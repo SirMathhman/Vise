@@ -10,10 +10,10 @@ export interface ModelSummary {
   id: string;
   name: string;
   contextLength: number;
-  /** USD per 1 million prompt tokens. */
-  promptPricePerMillion: number;
-  /** USD per 1 million completion tokens. */
-  completionPricePerMillion: number;
+  /** USD per 1 million prompt tokens, or null when the price varies per request. */
+  promptPricePerMillion: number | null;
+  /** USD per 1 million completion tokens, or null when the price varies per request. */
+  completionPricePerMillion: number | null;
 }
 
 export interface ModelsResponse {
@@ -37,6 +37,12 @@ export interface ChatRequest {
   model: string;
   message: string;
 }
+
+// One event in the chat reply stream. A reply ends with exactly one "done" or "error" event.
+export type ChatStreamEvent =
+  | { type: "delta"; text: string }
+  | { type: "done" }
+  | { type: "error"; message: string };
 
 export function greet(name: string): string {
   return `Hello, ${name}!`;

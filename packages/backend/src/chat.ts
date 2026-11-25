@@ -1,65 +1,175 @@
+import type { ChatStreamEvent } from "common";
+
 const CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
 
-// One streamed event from OpenRouter's chat completions endpoint.
+// Shape of one streamed chunk from OpenRouter's chat completions endpoint.
 interface ChatChunk {
   error?: { message?: string };
   choices?: { delta?: { content?: string | null } }[];
 }
 
-// Returns the text in one SSE line, or undefined for lines that carry no text.
-// Blank lines, ": keep-alive" comments, and "[DONE]" are skipped.
-function textFromSseLine(line: string): string | undefined {
+function isChoice(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const delta = (value as Record<string, unknown>).delta;
+  if (delta === undefined) {
+    return true;
+  }
+  if (typeof delta !== "object" || delta === null) {
+    return false;
+  }
+  const content = (delta as Record<string, unknown>).content;
+  return (
+    content === undefined || content === null || typeof content === "string"
+  );
+}
+
+function isChatChunk(value: unknown): value is ChatChunk {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const chunk = value as Record<string, unknown>;
+  if (chunk.error !== undefined) {
+    const error = chunk.error as Record<string, unknown> | null;
+    if (typeof error !== "object" || error === null) {
+      return false;
+    }
+    if (error.message !== undefined && typeof error.message !== "string") {
+      return false;
+    }
+  }
+  if (chunk.choices !== undefined) {
+    if (!Array.isArray(chunk.choices)) {
+      return false;
+    }
+    return (chunk.choices as unknown[]).every(isChoice);
+  }
+  return true;
+}
+
+// Returns the event carried by one validated chunk, or undefined when it has no text.
+function eventFromChunk(chunk: ChatChunk): ChatStreamEvent | undefined {
+  if (chunk.error) {
+    return {
+      type: "error",
+      message: chunk.error.message ?? "OpenRouter stream failed",
+    };
+  }
+  const text = chunk.choices?.[0]?.delta?.content;
+  return text ? { type: "delta", text } : undefined;
+}
+
+// Returns the event in one SSE line. Blank lines and ": keep-alive" comments yield nothing.
+function eventFromSseLine(line: string): ChatStreamEvent | undefined {
   const trimmed = line.trim();
   if (!trimmed.startsWith("data:")) {
     return undefined;
   }
   const payload = trimmed.slice("data:".length).trim();
-  if (payload === "" || payload === "[DONE]") {
+  if (payload === "") {
     return undefined;
   }
-  const chunk = JSON.parse(payload) as ChatChunk;
-  if (chunk.error) {
-    throw new Error(chunk.error.message ?? "OpenRouter stream failed");
+  if (payload === "[DONE]") {
+    return { type: "done" };
   }
-  return chunk.choices?.[0]?.delta?.content ?? undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(payload);
+  } catch {
+    throw new Error("OpenRouter sent a stream chunk that is not JSON");
+  }
+  if (!isChatChunk(parsed)) {
+    throw new Error("OpenRouter sent a stream chunk in an unexpected format");
+  }
+  return eventFromChunk(parsed);
 }
 
-// Turns OpenRouter's SSE body into a stream of text deltas.
-export function sseTextDeltas(
+// Turns OpenRouter's SSE body into typed events. The stream always ends with exactly one
+// "done" or "error" event, so a reply cut off mid-stream is reported as an error.
+export function chatEvents(
   body: ReadableStream<Uint8Array>,
-): ReadableStream<string> {
+): ReadableStream<ChatStreamEvent> {
+  const reader = body.getReader();
   const decoder = new TextDecoder();
   let pending = "";
-  return body.pipeThrough(
-    new TransformStream<Uint8Array, string>({
-      transform(chunk, controller) {
-        pending += decoder.decode(chunk, { stream: true });
-        const lines = pending.split("\n");
-        pending = lines.pop() ?? "";
-        for (const line of lines) {
-          const text = textFromSseLine(line);
-          if (text) {
-            controller.enqueue(text);
+
+  // Enqueues the events for complete lines. Reports how many were enqueued and
+  // whether a terminal event was among them.
+  function enqueueLines(
+    lines: string[],
+    controller: ReadableStreamDefaultController<ChatStreamEvent>,
+  ): { count: number; terminal: boolean } {
+    let count = 0;
+    for (const line of lines) {
+      const event = eventFromSseLine(line);
+      if (event) {
+        controller.enqueue(event);
+        count += 1;
+        if (event.type !== "delta") {
+          return { count, terminal: true };
+        }
+      }
+    }
+    return { count, terminal: false };
+  }
+
+  return new ReadableStream<ChatStreamEvent>({
+    // pull must enqueue something before it returns, or the stream stalls,
+    // so it keeps reading until an event is ready.
+    async pull(controller) {
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) {
+            const result = enqueueLines(
+              (pending + decoder.decode()).split("\n"),
+              controller,
+            );
+            pending = "";
+            if (!result.terminal) {
+              controller.enqueue({
+                type: "error",
+                message: "The reply ended before it was finished",
+              });
+            }
+            controller.close();
+            return;
+          }
+          pending += decoder.decode(value, { stream: true });
+          const lines = pending.split("\n");
+          pending = lines.pop() ?? "";
+          const result = enqueueLines(lines, controller);
+          if (result.terminal) {
+            controller.close();
+            await reader.cancel();
+            return;
+          }
+          if (result.count > 0) {
+            return;
           }
         }
-      },
-      flush(controller) {
-        pending += decoder.decode();
-        const text = textFromSseLine(pending);
-        if (text) {
-          controller.enqueue(text);
-        }
-      },
-    }),
-  );
+      } catch (err) {
+        controller.enqueue({
+          type: "error",
+          message: err instanceof Error ? err.message : String(err),
+        });
+        controller.close();
+        await reader.cancel().catch(() => undefined);
+      }
+    },
+    cancel(reason) {
+      return reader.cancel(reason);
+    },
+  });
 }
 
-// Sends one user message and returns the reply as it streams in.
+// Sends one user message and returns the reply as typed events, as they arrive.
 export async function streamChatReply(
   apiKey: string,
   model: string,
   message: string,
-): Promise<ReadableStream<string>> {
+): Promise<ReadableStream<ChatStreamEvent>> {
   const res = await fetch(CHAT_URL, {
     method: "POST",
     headers: {
@@ -75,5 +185,5 @@ export async function streamChatReply(
   if (!res.ok || !res.body) {
     throw new Error(`OpenRouter responded with HTTP ${String(res.status)}`);
   }
-  return sseTextDeltas(res.body);
+  return chatEvents(res.body);
 }

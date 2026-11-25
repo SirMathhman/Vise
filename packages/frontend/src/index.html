@@ -16,6 +16,22 @@
         <button id="refresh" type="button">Refresh</button>
       </section>
       <section class="status">
+        <h2>Chat</h2>
+        <label for="model-input">Model</label>
+        <input
+          id="model-input"
+          list="model-options"
+          autocomplete="off"
+          placeholder="Search for a model"
+        />
+        <datalist id="model-options"></datalist>
+        <label for="chat-message">Message</label>
+        <textarea id="chat-message" rows="3"></textarea>
+        <button id="chat-send" type="button">Send</button>
+        <p id="chat-status" role="status"></p>
+        <div id="chat-reply" class="reply"></div>
+      </section>
+      <section class="status">
         <h2>OpenRouter models</h2>
         <p id="models-status">Loading…</p>
         <div class="table-wrap">
@@ -32,6 +48,11 @@
             <tbody id="models-body"></tbody>
           </table>
         </div>
+        <div class="pager">
+          <button id="models-prev" type="button">Prev</button>
+          <span id="models-page"></span>
+          <button id="models-next" type="button">Next</button>
+        </div>
       </section>
       <section class="status">
         <h2>OpenRouter API key</h2>
@@ -47,22 +68,6 @@
           <button id="key-clear" type="button">Clear</button>
         </form>
         <p id="key-error" role="alert"></p>
-      </section>
-      <section class="status">
-        <h2>Chat</h2>
-        <label for="model-input">Model</label>
-        <input
-          id="model-input"
-          list="model-options"
-          autocomplete="off"
-          placeholder="Search for a model"
-        />
-        <datalist id="model-options"></datalist>
-        <label for="chat-message">Message</label>
-        <textarea id="chat-message" rows="3"></textarea>
-        <button id="chat-send" type="button">Send</button>
-        <p id="chat-status" role="status"></p>
-        <div id="chat-reply" class="reply"></div>
       </section>
     </main>
     <script type="module" src="./main.ts"></script>

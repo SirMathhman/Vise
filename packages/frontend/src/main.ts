@@ -1,7 +1,9 @@
 import type {
   ChatRequest,
+  ChatStreamEvent,
   ErrorResponse,
   HealthResponse,
+  ModelSummary,
   ModelsResponse,
   OpenRouterSettings,
   SaveOpenRouterKeyRequest,
@@ -46,11 +48,57 @@ const modelOptions = requireElement("model-options") as HTMLDataListElement;
 // Ids of the models loaded from the backend; the chat only accepts these.
 const knownModelIds = new Set<string>();
 
+const modelsPrev = requireElement("models-prev") as HTMLButtonElement;
+const modelsNext = requireElement("models-next") as HTMLButtonElement;
+const modelsPageLabel = requireElement("models-page");
+// The table shows a fixed number of rows per page, so the whole page fits the window.
+const MODELS_PAGE_SIZE = 5;
+let models: ModelSummary[] = [];
+let modelsPage = 0;
+
 function cell(text: string): HTMLTableCellElement {
   const td = document.createElement("td");
   td.textContent = text;
   return td;
 }
+
+// A null price means OpenRouter prices this model per request, not per token.
+function priceText(perMillion: number | null): string {
+  return perMillion === null ? "varies" : `$${perMillion.toFixed(2)}`;
+}
+
+function modelRow(m: ModelSummary): HTMLTableRowElement {
+  const row = document.createElement("tr");
+  // Model ids have the form "vendor/model"; the vendor is the part before the slash.
+  row.append(
+    cell(m.id.split("/")[0]),
+    cell(m.name),
+    cell(m.contextLength.toLocaleString()),
+    cell(priceText(m.promptPricePerMillion)),
+    cell(priceText(m.completionPricePerMillion)),
+  );
+  return row;
+}
+
+function renderModelsPage(): void {
+  const pageCount = Math.max(1, Math.ceil(models.length / MODELS_PAGE_SIZE));
+  const start = modelsPage * MODELS_PAGE_SIZE;
+  modelsBody.replaceChildren(
+    ...models.slice(start, start + MODELS_PAGE_SIZE).map(modelRow),
+  );
+  modelsPageLabel.textContent = `Page ${String(modelsPage + 1)} of ${String(pageCount)}`;
+  modelsPrev.disabled = modelsPage === 0;
+  modelsNext.disabled = modelsPage >= pageCount - 1;
+}
+
+modelsPrev.addEventListener("click", () => {
+  modelsPage -= 1;
+  renderModelsPage();
+});
+modelsNext.addEventListener("click", () => {
+  modelsPage += 1;
+  renderModelsPage();
+});
 
 async function loadModels(): Promise<void> {
   modelsStatus.textContent = "Loading…";
@@ -62,18 +110,9 @@ async function loadModels(): Promise<void> {
       throw new Error(err.error);
     }
     const data = (await res.json()) as ModelsResponse;
-    for (const m of data.models) {
-      const row = document.createElement("tr");
-      // Model ids have the form "vendor/model"; the vendor is the part before the slash.
-      row.append(
-        cell(m.id.split("/")[0]),
-        cell(m.name),
-        cell(m.contextLength.toLocaleString()),
-        cell(`$${m.promptPricePerMillion.toFixed(2)}`),
-        cell(`$${m.completionPricePerMillion.toFixed(2)}`),
-      );
-      modelsBody.append(row);
-    }
+    models = data.models;
+    modelsPage = 0;
+    renderModelsPage();
     knownModelIds.clear();
     const options = data.models.map((m) => {
       knownModelIds.add(m.id);
@@ -187,6 +226,41 @@ modelInput.addEventListener("change", () => {
   writeActiveModel(modelInput.value.trim());
 });
 
+// Applies one event from the reply stream. Returns true when the reply is over.
+function applyChatEvent(event: ChatStreamEvent): boolean {
+  if (event.type === "delta") {
+    chatReply.textContent += event.text;
+    return false;
+  }
+  chatStatus.textContent =
+    event.type === "error" ? `Unavailable: ${event.message}` : "Done";
+  return true;
+}
+
+// Reads the server-sent events until the reply's done or error event.
+async function readReply(body: ReadableStream<Uint8Array>): Promise<void> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let pending = "";
+  let chunk = await reader.read();
+  while (!chunk.done) {
+    pending += decoder.decode(chunk.value, { stream: true });
+    const lines = pending.split("\n");
+    pending = lines.pop() ?? "";
+    for (const line of lines) {
+      if (line.startsWith("data:")) {
+        const event = JSON.parse(line.slice("data:".length)) as ChatStreamEvent;
+        if (applyChatEvent(event)) {
+          await reader.cancel();
+          return;
+        }
+      }
+    }
+    chunk = await reader.read();
+  }
+  chatStatus.textContent = "The reply was cut off";
+}
+
 // Sends one message to the active model and shows the reply as it streams in.
 async function sendMessage(): Promise<void> {
   const model = modelInput.value.trim();
@@ -218,13 +292,7 @@ async function sendMessage(): Promise<void> {
     if (!res.body) {
       throw new Error("The reply had no body");
     }
-    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
-    let chunk = await reader.read();
-    while (!chunk.done) {
-      chatReply.textContent += chunk.value;
-      chunk = await reader.read();
-    }
-    chatStatus.textContent = "Done";
+    await readReply(res.body);
   } catch (err) {
     chatStatus.textContent = `Unavailable: ${err instanceof Error ? err.message : String(err)}`;
   } finally {
