@@ -76,8 +76,21 @@ export const ChatStreamEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("delta"), text: z.string() }),
   z.object({ type: z.literal("done") }),
   z.object({ type: z.literal("error"), message: z.string() }),
+  // The model proposed a change that needs the user's approval. The reply waits until the
+  // user answers at POST /api/approvals/:id.
+  z.object({
+    type: z.literal("approval"),
+    id: z.string(),
+    title: z.string(),
+    body: z.string(),
+  }),
 ]);
 export type ChatStreamEvent = z.infer<typeof ChatStreamEventSchema>;
+
+export const ApprovalDecisionSchema = z.object({ approved: z.boolean() });
+export type ApprovalDecision = z.infer<typeof ApprovalDecisionSchema>;
+
+export const ApprovalAckSchema = z.object({ ok: z.literal(true) });
 
 // Checks one untrusted value against the ChatStreamEvent contract.
 export function parseChatStreamEvent(

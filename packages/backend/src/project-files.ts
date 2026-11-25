@@ -1,6 +1,10 @@
+import { lstat } from "node:fs/promises";
 import path from "node:path";
 import type { Result } from "common";
 import { err, ok } from "common";
+
+// The largest project file a tool will open.
+const MAX_BYTES = 2_000_000;
 
 // Resolves a requested path against the root. Anything outside the root is refused.
 export function resolveInside(
@@ -41,4 +45,42 @@ export async function projectFiles(
   } catch {
     return err("Could not run git to list the project files");
   }
+}
+
+// Opens a project text file for a tool. Refuses anything outside the root, anything git
+// ignores, symbolic links, binary files, and files over the size limit.
+export async function readProjectText(
+  root: string,
+  requested: string,
+): Promise<Result<{ absolute: string; text: string }, string>> {
+  const relative = resolveInside(root, requested);
+  if (!relative.ok) {
+    return err(relative.error);
+  }
+  const files = await projectFiles(root);
+  if (!files.ok) {
+    return err(files.error);
+  }
+  if (!files.value.includes(relative.value)) {
+    return err(
+      `"${requested}" is not a file in the project, or git ignores it.`,
+    );
+  }
+
+  const absolute = path.resolve(root, relative.value);
+  const info = await lstat(absolute).catch(() => undefined);
+  if (info === undefined) {
+    return err("The file could not be read.");
+  }
+  if (info.isSymbolicLink()) {
+    return err("Symbolic links are not followed.");
+  }
+  if (info.size > MAX_BYTES) {
+    return err("The file is too large to read.");
+  }
+  const bytes = await Bun.file(absolute).bytes();
+  if (bytes.includes(0)) {
+    return err("The file is binary and cannot be read as text.");
+  }
+  return ok({ absolute, text: new TextDecoder().decode(bytes) });
 }

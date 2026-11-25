@@ -7,6 +7,7 @@ import type {
   Result,
 } from "common";
 import {
+  ApprovalDecisionSchema,
   ChatRequestSchema,
   SaveOpenRouterKeyRequestSchema,
   describeParseError,
@@ -16,6 +17,7 @@ import {
 } from "common";
 import type { ParseError } from "common";
 import { z } from "zod";
+import { decideApproval } from "./approvals";
 import { withSystemContext } from "./chat";
 import { streamChatReply } from "./tool-loop";
 import { PROJECT_ROOT } from "./workdir";
@@ -121,6 +123,18 @@ async function chat(req: Request): Promise<Response> {
   });
 }
 
+// Records the user's answer to a proposed change. The waiting reply then continues.
+async function answerApproval(req: Request, id: string): Promise<Response> {
+  const input = await readBody(req, ApprovalDecisionSchema);
+  if (!input.ok) {
+    return errorJson(describeParseError(input.error), 400);
+  }
+  if (!decideApproval(id, input.value.approved)) {
+    return errorJson("No change is waiting for that id.", 404);
+  }
+  return json({ ok: true });
+}
+
 async function models(): Promise<Response> {
   const apiKey = await getOpenRouterKey();
   if (!apiKey) {
@@ -153,6 +167,13 @@ Bun.serve({
     if (url.pathname === "/api/chat") {
       return req.method === "POST"
         ? chat(req)
+        : errorJson("Method not allowed", 405);
+    }
+
+    if (url.pathname.startsWith("/api/approvals/")) {
+      const id = url.pathname.slice("/api/approvals/".length);
+      return req.method === "POST"
+        ? answerApproval(req, id)
         : errorJson("Method not allowed", 405);
     }
 

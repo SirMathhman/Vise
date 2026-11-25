@@ -1,5 +1,11 @@
-import type { ChatMessage, ChatStreamEvent, Result } from "common";
+import type {
+  ApprovalDecision,
+  ChatMessage,
+  ChatStreamEvent,
+  Result,
+} from "common";
 import {
+  ApprovalAckSchema,
   ChatMessageListSchema,
   ChatStreamEventSchema,
   describeParseError,
@@ -9,7 +15,7 @@ import {
   parseJson,
   trimToBudget,
 } from "common";
-import { openChat } from "../api";
+import { apiJson, openChat } from "../api";
 import { errorMessage, requireElement } from "../dom";
 import { hasModel } from "./models";
 
@@ -22,9 +28,17 @@ const chatSend = requireElement("chat-send") as HTMLButtonElement;
 const chatNew = requireElement("chat-new") as HTMLButtonElement;
 const chatStatus = requireElement("chat-status") as HTMLParagraphElement;
 
+// A proposed change that waits for the user's answer.
+interface PendingApproval {
+  id: string;
+  title: string;
+  body: string;
+}
+
 // The conversation so far, and the exchange currently streaming in.
 let history: ChatMessage[] = [];
-let inFlight: { user: string; reply: string } | undefined;
+let inFlight:
+  { user: string; reply: string; approvals: PendingApproval[] } | undefined;
 
 // Storage is optional: without it the conversation lasts until the page reloads.
 function readStorage(key: string): string | null {
@@ -70,6 +84,30 @@ function bubble(message: ChatMessage): HTMLDivElement {
   return el;
 }
 
+// The card for one proposed change, with the choice to approve or reject it.
+function approvalCard(approval: PendingApproval): HTMLDivElement {
+  const card = document.createElement("div");
+  card.className = "approval";
+  const title = document.createElement("p");
+  title.className = "approval-title";
+  title.textContent = approval.title;
+  const body = document.createElement("pre");
+  body.textContent = approval.body;
+  const approve = document.createElement("button");
+  approve.type = "button";
+  approve.textContent = "Approve";
+  approve.addEventListener("click", () => void answer(approval.id, true));
+  const reject = document.createElement("button");
+  reject.type = "button";
+  reject.textContent = "Reject";
+  reject.addEventListener("click", () => void answer(approval.id, false));
+  const actions = document.createElement("div");
+  actions.className = "row";
+  actions.append(approve, reject);
+  card.append(title, body, actions);
+  return card;
+}
+
 // Redraws the conversation and keeps the newest message in view.
 function renderConversation(): void {
   const items: ChatMessage[] = [...history];
@@ -79,7 +117,8 @@ function renderConversation(): void {
       items.push({ role: "assistant", content: inFlight.reply });
     }
   }
-  conversation.replaceChildren(...items.map(bubble));
+  const cards = inFlight ? inFlight.approvals.map(approvalCard) : [];
+  conversation.replaceChildren(...items.map(bubble), ...cards);
   conversation.scrollTop = conversation.scrollHeight;
 }
 
@@ -88,11 +127,29 @@ function readActiveModel(): string {
   return readStorage(ACTIVE_MODEL_KEY) ?? "";
 }
 
-// Reads the server-sent events of one reply. Returns the full reply text,
-// or the error that ended it.
+// Sends the user's answer to a proposed change. The reply continues on its own stream.
+async function answer(id: string, approved: boolean): Promise<void> {
+  if (inFlight) {
+    inFlight.approvals = inFlight.approvals.filter((a) => a.id !== id);
+  }
+  renderConversation();
+  const decision: ApprovalDecision = { approved };
+  const result = await apiJson(`/api/approvals/${id}`, ApprovalAckSchema, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(decision),
+  });
+  if (!result.ok) {
+    chatStatus.textContent = `Unavailable: ${result.error}`;
+  }
+}
+
+// Reads the server-sent events of one reply. Text and proposed changes are passed on as
+// they arrive. Returns the full reply text, or the error that ended it.
 async function readReply(
   body: ReadableStream<Uint8Array>,
   onDelta: (text: string) => void,
+  onApproval: (approval: PendingApproval) => void,
 ): Promise<Result<string, string>> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -115,6 +172,8 @@ async function readReply(
       if (event.value.type === "delta") {
         reply += event.value.text;
         onDelta(event.value.text);
+      } else if (event.value.type === "approval") {
+        onApproval(event.value);
       } else if (event.value.type === "done") {
         await reader.cancel();
         return ok(reply);
@@ -156,7 +215,7 @@ async function sendMessage(): Promise<void> {
     return;
   }
   const dropped = messages.length < full.length;
-  inFlight = { user: message, reply: "" };
+  inFlight = { user: message, reply: "", approvals: [] };
   chatMessage.value = "";
   chatSend.disabled = true;
   chatStatus.textContent = "Waiting for reply…";
@@ -164,12 +223,22 @@ async function sendMessage(): Promise<void> {
   try {
     const opened = await openChat({ model, messages });
     const outcome = opened.ok
-      ? await readReply(opened.value, (text) => {
-          if (inFlight) {
-            inFlight.reply += text;
-          }
-          renderConversation();
-        })
+      ? await readReply(
+          opened.value,
+          (text) => {
+            if (inFlight) {
+              inFlight.reply += text;
+            }
+            renderConversation();
+          },
+          (approval) => {
+            if (inFlight) {
+              inFlight.approvals.push(approval);
+            }
+            chatStatus.textContent = "Waiting for your approval…";
+            renderConversation();
+          },
+        )
       : opened;
     if (outcome.ok) {
       history = [...messages, { role: "assistant", content: outcome.value }];

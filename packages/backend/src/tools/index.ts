@@ -1,11 +1,14 @@
+import type { Approval } from "../approvals";
+import { EDIT_FILE_TOOL, runEditFile } from "../edit-file";
 import { LIST_DIRECTORY_TOOL, runListDirectory } from "../list-directory";
 import { READ_FILE_TOOL, runReadFile } from "../read-file";
 
 // A tool the model may call: its definition for the request, and what running it returns.
-// Every tool receives the project root from the caller, never reads it on its own.
+// A tool that changes files returns an Approval instead, and nothing changes until the user
+// approves it. Every tool receives the project root from the caller.
 interface Tool {
   definition: { type: "function"; function: { name: string } };
-  run: (root: string, argumentsJson: string) => Promise<string>;
+  run: (root: string, argumentsJson: string) => Promise<string | Approval>;
 }
 
 // Every tool the backend offers, keyed by name.
@@ -17,6 +20,10 @@ const TOOLS = new Map<string, Tool>([
   [
     READ_FILE_TOOL.function.name,
     { definition: READ_FILE_TOOL, run: runReadFile },
+  ],
+  [
+    EDIT_FILE_TOOL.function.name,
+    { definition: EDIT_FILE_TOOL, run: runEditFile },
   ],
 ]);
 
@@ -30,7 +37,7 @@ export async function runTool(
   root: string,
   name: string,
   argumentsJson: string,
-): Promise<string> {
+): Promise<string | Approval> {
   const tool = TOOLS.get(name);
   return tool ? tool.run(root, argumentsJson) : `Unknown tool: ${name}`;
 }

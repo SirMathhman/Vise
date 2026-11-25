@@ -1,8 +1,6 @@
-import { lstat } from "node:fs/promises";
-import path from "node:path";
 import { parseJson } from "common";
 import { z } from "zod";
-import { projectFiles, resolveInside } from "./project-files";
+import { readProjectText } from "./project-files";
 
 export const READ_FILE_NAME = "read_file";
 
@@ -35,9 +33,8 @@ export const READ_FILE_TOOL = {
   },
 };
 
-// Longest text one call returns, and largest file it will open.
+// Longest text one call returns.
 const MAX_CHARS = 20000;
-const MAX_BYTES = 2_000_000;
 
 const ReadArgumentsSchema = z.object({
   path: z.string(),
@@ -87,35 +84,12 @@ export async function runReadFile(
   if (!args.ok) {
     return "The arguments were not valid. Use path, and optionally start_line and end_line.";
   }
-  const relative = resolveInside(root, args.value.path);
-  if (!relative.ok) {
-    return relative.error;
-  }
-  const files = await projectFiles(root);
-  if (!files.ok) {
-    return files.error;
-  }
-  if (!files.value.includes(relative.value)) {
-    return `"${args.value.path}" is not a file in the project, or git ignores it.`;
-  }
-
-  const absolute = path.resolve(root, relative.value);
-  const info = await lstat(absolute).catch(() => undefined);
-  if (info === undefined) {
-    return "The file could not be read.";
-  }
-  if (info.isSymbolicLink()) {
-    return "Symbolic links are not followed.";
-  }
-  if (info.size > MAX_BYTES) {
-    return "The file is too large to read.";
-  }
-  const bytes = await Bun.file(absolute).bytes();
-  if (bytes.includes(0)) {
-    return "The file is binary and cannot be read as text.";
+  const file = await readProjectText(root, args.value.path);
+  if (!file.ok) {
+    return file.error;
   }
   return readRange(
-    new TextDecoder().decode(bytes),
+    file.value.text,
     args.value.start_line ?? 1,
     args.value.end_line,
   );
