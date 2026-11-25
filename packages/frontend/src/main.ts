@@ -7,6 +7,7 @@ import { initModels, loadModels } from "./views/models";
 import { initHooks, loadHooks } from "./views/hooks";
 import { initNotes, loadNotes } from "./views/notes";
 import { initTabs } from "./views/tabs";
+import { loadTools } from "./views/tools";
 
 requireElement("greeting").textContent = greet("frontend");
 
@@ -23,3 +24,4 @@ void loadModels();
 void loadKeyStatus();
 void loadNotes();
 void loadHooks();
+void loadTools();

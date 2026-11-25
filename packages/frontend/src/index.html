@@ -21,6 +21,9 @@
         <button type="button" data-tab="hooks" aria-pressed="false">
           Hooks
         </button>
+        <button type="button" data-tab="tools" aria-pressed="false">
+          Tools
+        </button>
         <button type="button" data-tab="key" aria-pressed="false">Key</button>
         <button type="button" data-tab="backend" aria-pressed="false">
           Backend
@@ -122,6 +125,21 @@
           </div>
         </form>
         <p id="hooks-error" role="alert"></p>
+      </section>
+      <section class="status" data-tab-panel="tools" hidden>
+        <h2>Tools the model can call</h2>
+        <p id="tools-status" role="status">Loading…</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody id="tools-body"></tbody>
+          </table>
+        </div>
       </section>
       <section class="status" data-tab-panel="key" hidden>
         <h2>OpenRouter API key</h2>

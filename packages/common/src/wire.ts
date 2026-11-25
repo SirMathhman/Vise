@@ -274,3 +274,26 @@ export const EndSessionRequestSchema = z.object({
  * The body of POST /api/session/end.
  */
 export type EndSessionRequest = z.infer<typeof EndSessionRequestSchema>;
+
+/**
+ * One tool the model may call: its name and the description it reads.
+ */
+export const ToolSummarySchema = z.object({
+  name: z.string(),
+  description: z.string(),
+});
+/**
+ * One tool the model may call.
+ */
+export type ToolSummary = z.infer<typeof ToolSummarySchema>;
+
+/**
+ * The reply of GET /api/tools: every tool the model may call.
+ */
+export const ToolsResponseSchema = z.object({
+  tools: z.array(ToolSummarySchema),
+});
+/**
+ * The reply of GET /api/tools.
+ */
+export type ToolsResponse = z.infer<typeof ToolsResponseSchema>;

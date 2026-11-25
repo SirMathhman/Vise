@@ -5,6 +5,7 @@ import { LIST_DIRECTORY_TOOL, runListDirectory } from "./list-directory";
 import { MODEL_INFO_TOOL, runModelInfo } from "./model-info";
 import type { ModelSelf } from "../chat/model-facts";
 import type { ReplyContext, SubagentRunner } from "../chat/reply-context";
+import type { ToolSummary } from "common";
 import {
   START_SUBAGENT_NAME,
   START_SUBAGENT_TOOL,
@@ -38,6 +39,7 @@ import {
 // The name a tool is offered under.
 interface ToolFunction {
   name: string;
+  description: string;
 }
 
 // A tool as offered to the model in each request.
@@ -112,6 +114,18 @@ const TOOLS = new Map<string, Tool>([
     { definition: DELETE_NOTE_TOOL, run: fromArguments(runDeleteNote) },
   ],
 ]);
+
+/**
+ * The tools the model may call, with the description it reads for each.
+ *
+ * @returns One name and description per tool.
+ */
+export function listTools(): ToolSummary[] {
+  return toolDefinitions.map((tool) => ({
+    name: tool.function.name,
+    description: tool.function.description,
+  }));
+}
 
 /**
  * The tool definitions sent with each request.
