@@ -10,12 +10,17 @@
     <main>
       <h1>Vise</h1>
       <p id="greeting">Loading…</p>
-      <section class="status">
-        <h2>Backend</h2>
-        <p id="health">Checking…</p>
-        <button id="refresh" type="button">Refresh</button>
-      </section>
-      <section class="status">
+      <nav class="tabs" aria-label="Sections">
+        <button type="button" data-tab="chat" aria-pressed="true">Chat</button>
+        <button type="button" data-tab="models" aria-pressed="false">
+          Models
+        </button>
+        <button type="button" data-tab="key" aria-pressed="false">Key</button>
+        <button type="button" data-tab="backend" aria-pressed="false">
+          Backend
+        </button>
+      </nav>
+      <section class="status" data-tab-panel="chat">
         <h2>Chat</h2>
         <label for="model-input">Model</label>
         <input
@@ -26,12 +31,12 @@
         />
         <datalist id="model-options"></datalist>
         <label for="chat-message">Message</label>
-        <textarea id="chat-message" rows="3"></textarea>
+        <textarea id="chat-message" rows="2"></textarea>
         <button id="chat-send" type="button">Send</button>
         <p id="chat-status" role="status"></p>
         <div id="chat-reply" class="reply"></div>
       </section>
-      <section class="status">
+      <section class="status" data-tab-panel="models" hidden>
         <h2>OpenRouter models</h2>
         <p id="models-status">Loading…</p>
         <div class="table-wrap">
@@ -54,7 +59,7 @@
           <button id="models-next" type="button">Next</button>
         </div>
       </section>
-      <section class="status">
+      <section class="status" data-tab-panel="key" hidden>
         <h2>OpenRouter API key</h2>
         <p id="key-status">Checking…</p>
         <form id="key-form">
@@ -68,6 +73,11 @@
           <button id="key-clear" type="button">Clear</button>
         </form>
         <p id="key-error" role="alert"></p>
+      </section>
+      <section class="status" data-tab-panel="backend" hidden>
+        <h2>Backend</h2>
+        <p id="health">Checking…</p>
+        <button id="refresh" type="button">Refresh</button>
       </section>
     </main>
     <script type="module" src="./main.ts"></script>

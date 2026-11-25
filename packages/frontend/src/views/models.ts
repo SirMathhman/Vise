@@ -10,7 +10,7 @@ const modelsNext = requireElement("models-next") as HTMLButtonElement;
 const modelsPageLabel = requireElement("models-page");
 
 // The table shows a fixed number of rows per page, so the whole page fits the window.
-const MODELS_PAGE_SIZE = 5;
+const MODELS_PAGE_SIZE = 3;
 let models: ModelSummary[] = [];
 let modelsPage = 0;
 

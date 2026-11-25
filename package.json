@@ -13,6 +13,7 @@
     "build": "bun run --if-present --filter '*' build",
     "typecheck": "bun run --if-present --filter '*' typecheck",
     "lint": "eslint .",
+    "test": "bun test",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
