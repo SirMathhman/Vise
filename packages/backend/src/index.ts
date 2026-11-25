@@ -3,7 +3,6 @@ import type {
   HealthResponse,
   ModelsResponse,
   OkResponse,
-  ToolsResponse,
   OpenRouterSettings,
 } from "common";
 import {
@@ -19,7 +18,8 @@ import {
 import { decideApproval } from "./chat/approvals";
 import { systemContextText, withSystemContext } from "./chat/chat";
 import { streamChatReply } from "./chat/tool-loop";
-import { listTools, toolDefinitions } from "./tools";
+import { toolDefinitions } from "./tools";
+import { handleTools } from "./tools/tools-routes";
 import { buildModelSelf } from "./chat/model-facts";
 import { CORS_HEADERS, errorJson, json, readBody, refuseWrite } from "./http";
 import { PROJECT_ROOT } from "./project/workdir";
@@ -222,12 +222,6 @@ async function endSession(req: Request): Promise<Response> {
   return json(body);
 }
 
-// The tools the model may call, for the Tools tab.
-function tools(): Response {
-  const body: ToolsResponse = { tools: listTools() };
-  return json(body);
-}
-
 async function models(): Promise<Response> {
   const apiKey = await getOpenRouterKey();
   if (!apiKey) {
@@ -297,9 +291,7 @@ Bun.serve({
     }
 
     if (url.pathname === "/api/tools") {
-      return req.method === "GET"
-        ? tools()
-        : errorJson("Method not allowed", 405);
+      return handleTools(req);
     }
 
     if (url.pathname === "/api/models") {
