@@ -28,3 +28,21 @@ describe("ChatRequestSchema", () => {
     expect(parseJson(ChatRequestSchema, body).ok).toBe(false);
   });
 });
+
+describe("withSystemContext with a profile", () => {
+  test("adds the profile's instructions to the one system message", () => {
+    const upstream = withSystemContext(
+      [{ role: "user", content: "hi" }],
+      "/project/root",
+      "Answer in one sentence.",
+    );
+    expect(upstream).toEqual([
+      {
+        role: "system",
+        content:
+          "The working directory is /project/root.\n\nAnswer in one sentence.",
+      },
+      { role: "user", content: "hi" },
+    ]);
+  });
+});

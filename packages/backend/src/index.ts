@@ -14,7 +14,7 @@ import {
   greet,
 } from "common";
 import { decideApproval } from "./chat/approvals";
-import { withSystemContext } from "./chat/chat";
+import { systemContextText, withSystemContext } from "./chat/chat";
 import { streamChatReply } from "./chat/tool-loop";
 import { toolDefinitions } from "./tools";
 import { buildModelSelf } from "./chat/model-facts";
@@ -22,6 +22,7 @@ import { CORS_HEADERS, errorJson, json, readBody } from "./http";
 import { PROJECT_ROOT } from "./project/workdir";
 import { fetchModels } from "./openrouter";
 import { handleNotes } from "./notes/notes-routes";
+import { profileInstructions } from "./notes/profiles";
 import {
   clearSavedOpenRouterKey,
   getOpenRouterKey,
@@ -88,14 +89,29 @@ async function chat(req: Request): Promise<Response> {
   if (info === undefined) {
     return errorJson(`Unknown model "${model}".`, 400);
   }
-  if (!fitsBudget(messages, conversationLimit(info.contextLength))) {
+  let instructions: string | undefined;
+  if (input.value.profileId !== undefined) {
+    const profile = await profileInstructions(input.value.profileId);
+    if (!profile.ok) {
+      return errorJson(profile.error, 400);
+    }
+    instructions = profile.value;
+  }
+  // The budget counts the system instructions too, since the upstream request carries them.
+  const system = {
+    role: "user" as const,
+    content: systemContextText(PROJECT_ROOT, instructions),
+  };
+  if (
+    !fitsBudget([system, ...messages], conversationLimit(info.contextLength))
+  ) {
     return errorJson(
       "The conversation is too long for this model. Start a new conversation or send a shorter message.",
       400,
     );
   }
 
-  const upstream = withSystemContext(messages, PROJECT_ROOT);
+  const upstream = withSystemContext(messages, PROJECT_ROOT, instructions);
   const tools: typeof toolDefinitions =
     input.value.allowTools === false ? [] : toolDefinitions;
   const self = buildModelSelf(

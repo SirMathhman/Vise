@@ -7,6 +7,8 @@ import type {
 import {
   ApprovalAckSchema,
   ChatMessageListSchema,
+  NotesResponseSchema,
+  PROFILE_CATEGORY,
   ChatStreamEventSchema,
   budgetUsage,
   compactConversation,
@@ -32,6 +34,31 @@ const chatNew = requireElement("chat-new") as HTMLButtonElement;
 const chatStatus = requireElement("chat-status") as HTMLParagraphElement;
 const budgetBar = requireElement("budget-bar") as HTMLDivElement;
 const budgetLabel = requireElement("budget-label") as HTMLParagraphElement;
+const profileSelect = requireElement("profile-select") as HTMLSelectElement;
+
+// The profile this conversation uses. It resets with New conversation and is not kept across reloads.
+let profileId: string | undefined;
+
+// Fills the picker with the notes whose category is the profile category. A failed load keeps the
+// current choice.
+async function loadProfiles(): Promise<void> {
+  const result = await apiJson("/api/notes", NotesResponseSchema);
+  if (!result.ok) {
+    chatStatus.textContent = `Profiles unavailable: ${result.error}`;
+    return;
+  }
+  const profiles = result.value.notes.filter(
+    (note) => note.category === PROFILE_CATEGORY,
+  );
+  if (profileId !== undefined && !profiles.some((p) => p.id === profileId)) {
+    profileId = undefined;
+  }
+  profileSelect.replaceChildren(
+    new Option("No profile", ""),
+    ...profiles.map((p) => new Option(p.name, p.id)),
+  );
+  profileSelect.value = profileId ?? "";
+}
 
 // A proposed change that waits for the user's answer.
 interface PendingApproval {
@@ -355,7 +382,7 @@ async function sendMessage(): Promise<void> {
   chatStatus.textContent = "Waiting for reply…";
   renderConversation();
   try {
-    const opened = await openChat({ model, messages });
+    const opened = await openChat({ model, messages, profileId });
     const outcome = opened.ok
       ? await readReply(
           opened.value,
@@ -401,6 +428,8 @@ async function sendMessage(): Promise<void> {
 function newConversation(): void {
   history = [];
   measured = undefined;
+  profileId = undefined;
+  profileSelect.value = "";
   saveHistory();
   chatStatus.textContent = "";
   renderConversation();
@@ -420,5 +449,10 @@ export function initChat(): void {
   });
   chatSend.addEventListener("click", () => void sendMessage());
   chatNew.addEventListener("click", newConversation);
+  profileSelect.addEventListener("focus", () => void loadProfiles());
+  profileSelect.addEventListener("change", () => {
+    profileId = profileSelect.value || undefined;
+  });
+  void loadProfiles();
   renderConversation();
 }

@@ -3,19 +3,42 @@ import type { UpstreamMessage } from "../openrouter";
 import { readRound, streamFrom } from "../openrouter";
 
 /**
- * Puts the backend's own instructions in front of the conversation. The client never
- * sends these, so it cannot change the model's instructions.
+ * The text of the backend's system instructions: the working directory, then the profile's
+ * instructions when one is chosen. The client never sends these, so it cannot write them.
+ *
+ * @param directory The project root to name.
+ * @param instructions The chosen profile's instructions, if any.
+ * @returns The system instructions as one text.
+ */
+export function systemContextText(
+  directory: string,
+  instructions?: string,
+): string {
+  const parts = [`The working directory is ${directory}.`];
+  if (instructions !== undefined && instructions.trim() !== "") {
+    parts.push(instructions);
+  }
+  return parts.join("\n\n");
+}
+
+/**
+ * Puts the backend's own instructions in front of the conversation as one system message.
  *
  * @param messages The conversation, without system instructions.
  * @param directory The project root to name in the note.
+ * @param instructions The chosen profile's instructions, if any.
  * @returns The conversation with the system note first.
  */
 export function withSystemContext(
   messages: ChatMessage[],
   directory: string,
+  instructions?: string,
 ): UpstreamMessage[] {
   return [
-    { role: "system", content: `The working directory is ${directory}.` },
+    {
+      role: "system",
+      content: systemContextText(directory, instructions),
+    },
     ...messages,
   ];
 }

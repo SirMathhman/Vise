@@ -117,6 +117,8 @@ export const ChatRequestSchema = z.object({
   ),
   /** False offers the model no tools, so the reply can only be text. Defaults to true. */
   allowTools: z.boolean().optional(),
+  /** The id of a profile note whose instructions the backend adds to the conversation. */
+  profileId: z.string().min(1).optional(),
 });
 /**
  * The body of POST /api/chat.
@@ -221,3 +223,8 @@ export const NotesResponseSchema = z.object({ notes: z.array(NoteSchema) });
  * The reply of GET /api/notes.
  */
 export type NotesResponse = z.infer<typeof NotesResponseSchema>;
+
+/**
+ * The category that marks a note as a profile: its content is system instructions for the model.
+ */
+export const PROFILE_CATEGORY = "profile";
