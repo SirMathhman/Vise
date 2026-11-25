@@ -4,7 +4,7 @@ import type { ToolCall, UpstreamMessage } from "../openrouter";
 import { openUpstream, readRound, streamFrom } from "../openrouter";
 import type { Approval } from "./approvals";
 import { openApproval, waitForApproval } from "./approvals";
-import { runTool, toolDefinitions } from "../tools";
+import { isToolName, runTool, toolDefinitions } from "../tools";
 import type { ReplyContext, SubagentRunner } from "./reply-context";
 import type { ModelSelf } from "./model-facts";
 import { PROJECT_ROOT } from "../project/workdir";
@@ -141,9 +141,23 @@ async function* toolResults(
   signal: AbortSignal | undefined,
   context: ReplyContext,
   relay: Relay | undefined,
+  tools: typeof toolDefinitions,
 ): AsyncGenerator<ChatStreamEvent, UpstreamMessage[]> {
   const results: UpstreamMessage[] = [];
   for (const call of calls) {
+    // A tool the user turned off is refused, even when the model names it anyway. A name that is
+    // no tool at all goes to the registry, which reports it.
+    if (
+      isToolName(call.name) &&
+      !tools.some((tool) => tool.function.name === call.name)
+    ) {
+      results.push({
+        role: "tool",
+        tool_call_id: call.id,
+        content: `The tool ${call.name} is turned off.`,
+      });
+      continue;
+    }
     const work = runTool(context, call.name, call.arguments);
     const outcome =
       relay === undefined ? await work : yield* settle(work, relay);
@@ -181,6 +195,7 @@ function subagentRunner(
   relay: Relay,
   budget: TurnBudget,
   context: ReplyContext,
+  tools: typeof toolDefinitions,
 ): SubagentRunner {
   return async (task) => {
     if (budget.starts <= 0) {
@@ -197,7 +212,7 @@ function subagentRunner(
         },
       ],
       signal,
-      toolDefinitions,
+      tools,
       { root: context.root, self: context.self },
       { kind: "subagent", budget },
     );
@@ -258,6 +273,7 @@ async function* replyEvents(
             scope.relay,
             scope.budget,
             context,
+            tools,
           ),
         }
       : context;
@@ -273,7 +289,13 @@ async function* replyEvents(
       break;
     }
     const relay = scope.kind === "main" ? scope.relay : undefined;
-    const results = yield* toolResults(calls, signal, toolContext, relay);
+    const results = yield* toolResults(
+      calls,
+      signal,
+      toolContext,
+      relay,
+      tools,
+    );
     // The client has gone: do not ask the model again.
     if (signal?.aborted) {
       return;

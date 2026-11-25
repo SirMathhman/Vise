@@ -5,7 +5,9 @@ import { LIST_DIRECTORY_TOOL, runListDirectory } from "./list-directory";
 import { MODEL_INFO_TOOL, runModelInfo } from "./model-info";
 import type { ModelSelf } from "../chat/model-facts";
 import type { ReplyContext, SubagentRunner } from "../chat/reply-context";
-import type { ToolSummary } from "common";
+import type { Result, ToolSummary } from "common";
+import { ok } from "common";
+import { readToolSettings } from "./tool-settings";
 import {
   START_SUBAGENT_NAME,
   START_SUBAGENT_TOOL,
@@ -114,6 +116,35 @@ const TOOLS = new Map<string, Tool>([
     { definition: DELETE_NOTE_TOOL, run: fromArguments(runDeleteNote) },
   ],
 ]);
+
+/**
+ * Whether a tool with this name exists.
+ *
+ * @param name The tool's name.
+ * @returns True when the registry has a tool by that name.
+ */
+export function isToolName(name: string): boolean {
+  return TOOLS.has(name);
+}
+
+/**
+ * The tools the model may be offered: every tool the user has not turned off.
+ *
+ * @returns The enabled tool definitions, or a message when the settings cannot be read.
+ */
+export async function enabledToolDefinitions(): Promise<
+  Result<typeof toolDefinitions, string>
+> {
+  const settings = await readToolSettings();
+  if (!settings.ok) {
+    return settings;
+  }
+  return ok(
+    toolDefinitions.filter(
+      (tool) => !settings.value.disabled.includes(tool.function.name),
+    ),
+  );
+}
 
 /**
  * The tools the model may call, with the description it reads for each.

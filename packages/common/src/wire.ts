@@ -297,3 +297,14 @@ export const ToolsResponseSchema = z.object({
  * The reply of GET /api/tools.
  */
 export type ToolsResponse = z.infer<typeof ToolsResponseSchema>;
+
+/**
+ * Which tools are turned off. Every tool not named here is on.
+ */
+export const ToolSettingsSchema = z.object({
+  disabled: z.array(z.string()),
+});
+/**
+ * Which tools are turned off.
+ */
+export type ToolSettings = z.infer<typeof ToolSettingsSchema>;
