@@ -10,7 +10,7 @@ This document describes the target architecture. It is a reference for where the
 - **Stream event**: a typed wire event in `common`: `delta`, `done`, `error`, or `approval`. Every reply ends with exactly one `done` or `error`, so a cut-off reply is never mistaken for a finished one. An `approval` waits for the user's answer.
 - **System context**: instructions the backend adds to every upstream request: the project root and the chosen profile's text. Only the backend writes it. The wire request carries user and assistant turns, and a profile id.
 - **Profile**: a note in the profile category. Its content is system instructions the user chose for a chat.
-- **Reply context**: the facts one reply passes to every tool: the project root, the abort signal, and `ModelSelf`, the model's own id, name, window, reply reserve, budget still free, and tool names. The loop passes it whole and names no tool.
+- **Reply context**: the facts one reply passes to every tool: the project root, `ModelSelf` (model id, name, window, reply reserve, budget left, tool names), and the subagent runner, which only the main reply has. The loop passes it whole and names no tool.
 - **Note**: a named record: id, name, category, summary, and content. Names are unique ignoring case. Notes are stored outside the project, in `notes.json`.
 
 ## Definitions: Tools and Approval
@@ -25,6 +25,7 @@ This document describes the target architecture. It is a reference for where the
 
 - **Session**: one conversation. It starts with its first turn and ends when the user starts a new conversation. A page reload does not end it, and no hook runs then.
 - **Turn**: one chat request that allows tools. A summary request sends no tools and is not a turn.
+- **Subagent**: a reply the model starts with `start_subagent`. It has the parent's model and tools except that it cannot start one. Only its final text returns to the parent. It runs inside the parent's turn and shares its budget.
 - **Background job**: a command that is still running after its 30-second wait. It belongs to its session: it stops at its 10-minute limit or when the session ends. Its output is read through `check_command`, which changes nothing.
 - **Hook**: a shell command the user sets in the Hooks tab for `beforeSession`, `afterSession`, `beforeTurn`, or `afterTurn`. The global command in `hooks.json` runs first, then the chosen profile's command in `profile-hooks.json`; a failing global command stops the rest. Hooks are user configuration, never model output. A failing before hook stops its step; a failing after hook is logged and never changes the reply.
 
@@ -48,12 +49,21 @@ Dependency direction is one way: frontend and backend depend on common, never th
 
 ## Structure: Tools and Streaming
 
-- Local tools are registered in `packages/backend/src/tools/index.ts`. Each has a zod argument schema, empty when it takes no arguments. A tool that runs processes lives in its own folder, `packages/backend/src/shell/`, and is registered beside the file tools; it depends only on common and the approval type. The sandbox module is the only path that starts a model-proposed command, and no tool runs a host process. The loop dispatches by registry lookup and names no tool. The loop hands each tool the project root and the model's facts from the reply context, never the raw route input. All project file access, including the git-visible file list, path resolution, and the text checks, lives in `project-files.ts`, which the read, edit, and create tools share. No tool repeats the git, root, or link checks inline.
+- Local tools are registered in `packages/backend/src/tools/index.ts`. Each has a zod argument schema. A tool that runs processes lives in its own folder, `packages/backend/src/shell/`, and is registered beside the file tools; it depends only on common and the approval type. The sandbox module is the only path that starts a model-proposed command, and no tool runs a host process. The loop dispatches by registry lookup and names no tool. The loop dispatches by registry lookup and names no tool. Every tool takes one input object (root, arguments, reply context), so no call passes arguments by position. All project file access, including the git-visible file list, path resolution, and the text checks, lives in `project-files.ts`, which the read, edit, and create tools share. No tool repeats the git, root, or link checks inline.
 - Routing is a table of path to handler, not a growing `if` chain inside one `fetch` function.
 - Frontend modules are split per view. Each view owns its DOM and calls a shared typed API client.
 - All backend-to-frontend data passes through a typed client in common, so the wire contract is compiled, not assumed.
 - Streaming: the upstream module parses the upstream body into stream events, and the HTTP layer frames them as server-sent events. Raw upstream bytes are never forwarded. The frontend consumes the same stream event types from common.
 - Lint and typecheck are merge gates: `bun run lint` and `bun run typecheck` must pass under strict TypeScript rules.
+
+## Structure: Subagents
+
+A subagent is a nested run of the tool loop, started by the `start_subagent` tool through a runner the loop puts in the reply context. Only the main reply receives that runner, so nesting stops at one level, and the tool registry never imports the loop.
+
+- The loop, not the tool, builds the subagent's request, with the parent's model, tools, and abort signal.
+- The subagent's approvals reach the client through a relay the main reply drains while the tool runs.
+- The loop cuts the subagent's final text to the command output cap, importing that limit from the process runner.
+- A turn's subagents share a budget of 3 starts and 20 model calls. The main reply is not counted.
 
 ## Potential Problems
 
@@ -74,6 +84,11 @@ Dependency direction is one way: frontend and backend depend on common, never th
 - Model facts are a snapshot. The budget figure is as it stood when the reply started, and each tool round adds to the conversation after it. The reply must say so rather than present the figure as live.
 - Stopping a command kills the podman client and removes its container, so no container outlives its job. A backend restart runs no cleanup, so a container runs until its own limit. A stopped podman machine fails every command. Exit codes 124 and 125 can also come from the command itself, so the message can name the wrong cause.
 - A background job outlives a stopped reply, since no abort reaches it. Jobs have no cap on how many run at once, and finished jobs stay readable until the session ends.
+
+## Potential Problems: Subagents
+
+- Subagent tokens are not counted in the turn's conversation budget. Each subagent call only has to fit the model's window.
+- Each subagent's rounds are capped, but a subagent's running tool call is not stopped when the client leaves.
 
 ## Security Concerns
 
@@ -98,7 +113,7 @@ Dependency direction is one way: frontend and backend depend on common, never th
 
 ## Security Concerns: Approvals and Commands
 
-- **Approvals**: approval ids are random UUIDs, and the answer route accepts an answer from any caller holding one. Approval is the only gate on a file write or a command. Each wait ends after ten minutes or when the client disconnects. Missing control: authentication on the route.
+- **Approvals**: approval ids are random UUIDs, and the answer route accepts an answer from any caller holding one. Approval is the only gate on a file write or a command. Each wait ends after ten minutes or when the client disconnects. Missing control: authentication on the route. A subagent's approval card looks like the main reply's and does not name the subagent or its task. Missing control: the card names its origin and shows the task.
 - **Command execution**: the model may propose any shell command. It runs only after the user approves the command text, inside a throwaway podman container from the sandbox image. Only the project is mounted, read-write at `/workspace`; no host environment reaches the container; capabilities are dropped; and the run has a time limit, and a background run also ends with its session. It never runs on the host and has no fallback. Missing controls: a network policy, since installs need the network; a digest-pinned image; CPU, memory, and process limits; and a block on writes to git-ignored files and the mounted `.git` directory, whose hooks run when git runs. Any secret the mount reaches can leave through the network or the output. Tool output and file text can carry instructions that steer which command the user is asked to approve.
 
 ## Security Concerns: Chat and Files

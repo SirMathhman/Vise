@@ -1,16 +1,67 @@
 import type { ChatStreamEvent, Result } from "common";
-import { err, ok } from "common";
+import { err, estimateTokens, ok } from "common";
 import type { ToolCall, UpstreamMessage } from "../openrouter";
 import { openUpstream, readRound, streamFrom } from "../openrouter";
 import type { Approval } from "./approvals";
 import { openApproval, waitForApproval } from "./approvals";
 import { runTool, toolDefinitions } from "../tools";
 import type { ReplyContext, SubagentRunner } from "./reply-context";
+import type { ModelSelf } from "./model-facts";
 import { PROJECT_ROOT } from "../project/workdir";
 import { MAX_CHARS, cutNote } from "../process/run";
 
 // The most rounds of tool calls one reply may take before the backend stops.
 const MAX_TOOL_ROUNDS = 5;
+
+// How many subagents one chat turn may start, and how many model calls its subagents may make
+// together. The main reply is not counted.
+const TURN_SUBAGENT_STARTS = 3;
+const TURN_SUBAGENT_CALLS = 20;
+
+// What the subagents of one turn may still spend. Shared by all of them.
+interface TurnBudget {
+  starts: number;
+  calls: number;
+}
+
+// Spends one model call of the turn's budget. A call that would not fit the model's window is
+// refused, as the main reply's conversation is refused before it is sent.
+function spendCall(
+  budget: TurnBudget,
+  messages: UpstreamMessage[],
+  tools: typeof toolDefinitions,
+  self: ModelSelf | undefined,
+): boolean {
+  if (budget.calls <= 0) {
+    return false;
+  }
+  if (self !== undefined) {
+    const limit = self.contextLength - self.replyReserveTokens;
+    const size =
+      estimateTokens(JSON.stringify(messages)) +
+      estimateTokens(JSON.stringify(tools));
+    if (size > limit) {
+      return false;
+    }
+  }
+  budget.calls -= 1;
+  return true;
+}
+
+// The main reply: it has a relay for its subagents' events, and the turn's budget for them.
+interface MainScope {
+  kind: "main";
+  relay: Relay;
+  budget: TurnBudget;
+}
+
+// A subagent: its model calls are spent from the turn's budget.
+interface SubagentScope {
+  kind: "subagent";
+  budget: TurnBudget;
+}
+
+type ReplyScope = MainScope | SubagentScope;
 
 // Events raised while a tool runs, such as a subagent's approvals, waiting to reach the client.
 // The reply sends them as they arrive, rather than after the tool finishes.
@@ -128,9 +179,14 @@ function subagentRunner(
   model: string,
   signal: AbortSignal | undefined,
   relay: Relay,
+  budget: TurnBudget,
   context: ReplyContext,
 ): SubagentRunner {
   return async (task) => {
+    if (budget.starts <= 0) {
+      return "This turn has already started the most subagents it may. Finish the task yourself.";
+    }
+    budget.starts -= 1;
     const started = await openReply(
       apiKey,
       model,
@@ -143,26 +199,31 @@ function subagentRunner(
       signal,
       toolDefinitions,
       { root: context.root, self: context.self },
-      undefined,
+      { kind: "subagent", budget },
     );
     if (!started.ok) {
       return `The subagent could not start: ${started.error}`;
     }
     const reader = started.value.getReader();
     let text = "";
-    for (;;) {
-      const next = await reader.read();
-      if (next.done) {
-        break;
+    try {
+      for (;;) {
+        const next = await reader.read();
+        if (next.done) {
+          break;
+        }
+        const event = next.value;
+        if (event.type === "delta") {
+          text += event.text;
+        } else if (event.type === "approval") {
+          relay.push(event);
+        } else if (event.type === "error") {
+          await reader.cancel();
+          return `The subagent failed: ${event.message}`;
+        }
       }
-      const event = next.value;
-      if (event.type === "delta") {
-        text += event.text;
-      } else if (event.type === "approval") {
-        relay.push(event);
-      } else if (event.type === "error") {
-        return `The subagent failed: ${event.message}`;
-      }
+    } catch {
+      return "The subagent failed: its reply stopped unexpectedly.";
     }
     if (text === "") {
       return "The subagent gave no answer.";
@@ -183,16 +244,23 @@ async function* replyEvents(
   signal: AbortSignal | undefined,
   tools: typeof toolDefinitions,
   context: ReplyContext,
-  relay: Relay | undefined,
+  scope: ReplyScope,
 ): AsyncGenerator<ChatStreamEvent, void> {
-  // Only the main reply, which has a relay, may start subagents.
+  // Only the main reply starts subagents.
   const toolContext =
-    relay === undefined
-      ? context
-      : {
+    scope.kind === "main"
+      ? {
           ...context,
-          subagent: subagentRunner(apiKey, model, signal, relay, context),
-        };
+          subagent: subagentRunner(
+            apiKey,
+            model,
+            signal,
+            scope.relay,
+            scope.budget,
+            context,
+          ),
+        }
+      : context;
   let conversation = messages;
   let body = first;
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
@@ -204,12 +272,23 @@ async function* replyEvents(
     if (round === MAX_TOOL_ROUNDS - 1) {
       break;
     }
+    const relay = scope.kind === "main" ? scope.relay : undefined;
     const results = yield* toolResults(calls, signal, toolContext, relay);
     // The client has gone: do not ask the model again.
     if (signal?.aborted) {
       return;
     }
     conversation = [...conversation, assistantToolCalls(calls), ...results];
+    if (
+      scope.kind === "subagent" &&
+      !spendCall(scope.budget, conversation, tools, context.self)
+    ) {
+      yield {
+        type: "error",
+        message: "The subagents of this turn have used their model calls.",
+      };
+      return;
+    }
     const next = await openUpstream(apiKey, model, conversation, tools);
     if (!next.ok) {
       yield { type: "error", message: next.error };
@@ -223,8 +302,8 @@ async function* replyEvents(
   };
 }
 
-// Sends one request and returns its reply as typed events. The relay is set only for the main
-// reply.
+// Sends one request and returns its reply as typed events. A subagent's first request is spent
+// from the turn's budget before it is sent.
 async function openReply(
   apiKey: string,
   model: string,
@@ -232,8 +311,14 @@ async function openReply(
   signal: AbortSignal | undefined,
   tools: typeof toolDefinitions,
   context: ReplyContext,
-  relay: Relay | undefined,
+  scope: ReplyScope,
 ): Promise<Result<ReadableStream<ChatStreamEvent>, string>> {
+  if (
+    scope.kind === "subagent" &&
+    !spendCall(scope.budget, messages, tools, context.self)
+  ) {
+    return err("The subagents of this turn have used their model calls.");
+  }
   const first = await openUpstream(apiKey, model, messages, tools);
   if (!first.ok) {
     return err(first.error);
@@ -248,7 +333,7 @@ async function openReply(
         signal,
         tools,
         context,
-        relay,
+        scope,
       ),
     ),
   );
@@ -275,13 +360,9 @@ export function streamChatReply(
   tools: typeof toolDefinitions = toolDefinitions,
   context: ReplyContext = { root: PROJECT_ROOT },
 ): Promise<Result<ReadableStream<ChatStreamEvent>, string>> {
-  return openReply(
-    apiKey,
-    model,
-    messages,
-    signal,
-    tools,
-    context,
-    new Relay(),
-  );
+  return openReply(apiKey, model, messages, signal, tools, context, {
+    kind: "main",
+    relay: new Relay(),
+    budget: { starts: TURN_SUBAGENT_STARTS, calls: TURN_SUBAGENT_CALLS },
+  });
 }

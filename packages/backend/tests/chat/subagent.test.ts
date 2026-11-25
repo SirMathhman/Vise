@@ -35,6 +35,13 @@ const textRound = (text: string): string[] => [
   "data: [DONE]",
 ];
 
+const callsRound = (
+  calls: { name: string; args: Record<string, string> }[],
+): string[] => [
+  `data: ${JSON.stringify({ choices: [{ index: 0, delta: { tool_calls: calls.map((c, i) => ({ index: i, id: `call_${i + 1}`, type: "function", function: { name: c.name, arguments: JSON.stringify(c.args) } })) }, finish_reason: null }] })}`,
+  `data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`,
+];
+
 // Reads the whole reply, answering each approval with the given choice as it arrives.
 async function collect(
   answer: "approve" | "reject" | undefined,
@@ -122,5 +129,33 @@ describe("subagents", () => {
       title: 'Update note "A"',
     });
     expect(bodies[2]).toContain("The user declined this change.");
+  });
+
+  test("a turn cannot start more subagents than its cap, and the refusal is sent to the model", async () => {
+    const bodies = fakeUpstream([
+      callsRound([
+        { name: "start_subagent", args: { task: "one" } },
+        { name: "start_subagent", args: { task: "two" } },
+        { name: "start_subagent", args: { task: "three" } },
+        { name: "start_subagent", args: { task: "four" } },
+      ]),
+      textRound("a"),
+      textRound("b"),
+      textRound("c"),
+      textRound("final"),
+    ]);
+    await collect(undefined);
+    expect(bodies.length).toBe(5);
+    expect(bodies[4]).toContain("already started the most subagents it may");
+  });
+
+  test("a subagent whose reply fails reports the failure to the main reply", async () => {
+    const bodies = fakeUpstream([
+      callRound("start_subagent", { task: "break" }),
+      ["data: {not json"],
+      textRound("final"),
+    ]);
+    await collect(undefined);
+    expect(bodies[2]).toContain("The subagent failed");
   });
 });
